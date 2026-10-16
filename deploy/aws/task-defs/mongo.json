@@ -1,0 +1,33 @@
+{
+  "family": "security-app-mongo",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "__EXEC_ROLE_ARN__",
+  "containerDefinitions": [
+    {
+      "name": "mongo",
+      "image": "__IMG_MONGO__",
+      "essential": true,
+      "portMappings": [
+        {"name": "mongo", "containerPort": 27017, "protocol": "tcp"}
+      ],
+      "healthCheck": {
+        "command": ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"],
+        "interval": 15,
+        "timeout": 5,
+        "retries": 10,
+        "startPeriod": 10
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/security-app/mongo",
+          "awslogs-region": "__AWS_REGION__",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

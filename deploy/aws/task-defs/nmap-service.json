@@ -1,0 +1,71 @@
+{
+  "family": "security-app-nmap-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "__EXEC_ROLE_ARN__",
+  "containerDefinitions": [
+    {
+      "name": "nmap-service",
+      "image": "__IMG_NMAP_SERVICE__",
+      "essential": true,
+      "environment": [
+        {
+          "name": "MS_NMAP_MONGO_URI",
+          "value": "mongodb://mongo:27017/?directConnection=true"
+        },
+        {
+          "name": "MS_NMAP_MONGO_DB",
+          "value": "db-nmap"
+        },
+        {
+          "name": "MS_NMAP_SSH_PORT",
+          "value": "22"
+        },
+        {
+          "name": "MS_NMAP_BROKER_ENDPOINT",
+          "value": "amqps://rabbitmq:5671"
+        },
+        {
+          "name": "MS_NMAP_BROKER_CREDENTIAL",
+          "value": "lab-only-not-a-real-secret-ms-nmap"
+        },
+        {
+          "name": "MS_NMAP_BROKER_VHOST",
+          "value": "security-app"
+        },
+        {
+          "name": "SSL_CERT_FILE",
+          "value": "/etc/rabbitmq-tls/ca_certificate.pem"
+        },
+        {
+          "name": "MS_NMAP_SSH_CONNECT_TIMEOUT_SECS",
+          "value": "10"
+        },
+        {
+          "name": "MS_NMAP_SSH_COMMAND_TIMEOUT_SECS",
+          "value": "900"
+        },
+        {
+          "name": "MS_NMAP_NVD_ENRICHMENT_ENABLED",
+          "value": "false"
+        },
+        {
+          "name": "MS_NMAP_SCAN_TIMING",
+          "value": "aggressive"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/security-app/nmap-service",
+          "awslogs-region": "__AWS_REGION__",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

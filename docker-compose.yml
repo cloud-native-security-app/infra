@@ -1,0 +1,145 @@
+services:
+  # --- Dependencias de infraestructura ---------------------------------
+
+  rabbitmq:
+    image: rabbitmq:4.3.5-management
+    ports:
+      - "5672:5672"   # AMQP en claro — SOLO para esta prueba local (ver broker/rabbitmq/README.md)
+      - "5671:5671"   # AMQPS (TLS, cert autofirmado de laboratorio)
+      - "15672:15672" # UI de management
+    volumes:
+      - ./broker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./broker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./broker/rabbitmq/tls:/etc/rabbitmq/tls:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: usuarios
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # --- Servicios de la plataforma ---------------------------------------
+
+  user-service:
+    build: ./user-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:devpassword@postgres:5432/usuarios
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: "8080"
+      GATEWAY_SHARED_SECRET: dev-shared-secret
+      # Clave de cifrado en reposo de las credenciales de red (feature
+      # network_credentials_api): 32 bytes, hex de 64 caracteres — SOLO para
+      # laboratorio, como el resto de secretos de este compose.
+      CREDENTIALS_ENCRYPTION_KEY: "0707070707070707070707070707070707070707070707070707070707070707"
+    ports:
+      - "8081:8080"
+
+  nmap-service:
+    build:
+      context: ./nmap-service
+      # Contexto adicional (BuildKit) para que el Dockerfile pueda alcanzar
+      # el CA de laboratorio del broker sin salirse de su contexto normal
+      # (./nmap-service) ni requerir copiarlo/duplicarlo a mano — ver
+      # `COPY --from=tls ...` en nmap-service/Dockerfile. El mismo mecanismo
+      # se usa en deploy/aws/ vía `docker build --build-context tls=...`.
+      additional_contexts:
+        tls: ./broker/rabbitmq/tls
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MS_NMAP_MONGO_URI: "mongodb://mongo:27017/?directConnection=true"
+      MS_NMAP_MONGO_DB: db-nmap
+      MS_NMAP_SSH_PORT: "22"
+      # Adaptador real de broker (feature broker_adapter): el cliente AMQPS
+      # siempre conecta por TLS, con el usuario del servicio (`ms-nmap`), la
+      # credencial y el vhost por separado — el endpoint es solo host:puerto.
+      # El cert del broker de laboratorio es autofirmado y el trust store
+      # nativo del proceso no confía en él, así que se monta la CA de
+      # laboratorio y se apunta `SSL_CERT_FILE` a ella (sólo para laboratorio;
+      # en producción no se fija y el endpoint apunta al CA real del despliegue).
+      # El resto de TLS de este proceso (Mongo es interno sin TLS aquí, NVD
+      # deshabilitado) no se ve afectado en este escenario.
+      MS_NMAP_BROKER_ENDPOINT: "amqps://rabbitmq:5671"
+      MS_NMAP_BROKER_CREDENTIAL: lab-only-not-a-real-secret-ms-nmap
+      MS_NMAP_BROKER_VHOST: security-app
+      SSL_CERT_FILE: /etc/rabbitmq-tls/ca_certificate.pem
+      MS_NMAP_SSH_CONNECT_TIMEOUT_SECS: "10"
+      MS_NMAP_SSH_COMMAND_TIMEOUT_SECS: "300"
+      MS_NMAP_NVD_ENRICHMENT_ENABLED: "false"
+    volumes:
+      - ./broker/rabbitmq/tls/ca_certificate.pem:/etc/rabbitmq-tls/ca_certificate.pem:ro
+
+  gateway:
+    build: ./gateway
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+    environment:
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: "8080"
+      # Placeholders: sin credenciales Google reales el login no completa
+      # (ver START.md, "Huecos conocidos"). El resto del wiring OIDC sí se
+      # puede observar (GET /auth/login redirige a Google).
+      GOOGLE_CLIENT_ID: dev-placeholder
+      GOOGLE_CLIENT_SECRET: dev-placeholder
+      GOOGLE_REDIRECT_URI: "http://localhost:8080/auth/callback"
+      # Adonde redirige /auth/callback tras emitir la sesión (feature
+      # post_login_redirect) — el puerto host de `front` en este compose.
+      FRONT_BASE_URL: "http://localhost:8082"
+      SESSION_SIGNING_KEY: dev-signing-key-not-for-prod
+      SESSION_TTL_SECS: "3600"
+      # Plano (5672), no AMQPS (5671): el cert de RabbitMQ es autofirmado de
+      # laboratorio y el cliente AMQPS por defecto no confía en esa CA. El
+      # propio broker/rabbitmq/README.md documenta 5672 como el puerto para
+      # desarrollo/depuración local.
+      BROKER_AMQPS_URL: "amqp://gateway:lab-only-not-a-real-secret-gateway@rabbitmq:5672"
+      BROKER_VHOST: security-app
+      MS_USUARIOS_BASE_URL: "http://user-service:8080"
+      MS_USUARIOS_SHARED_SECRET: dev-shared-secret
+      SCAN_SUBMISSION_RATE_LIMIT_MAX_REQUESTS: "5"
+      SCAN_SUBMISSION_RATE_LIMIT_WINDOW_SECS: "60"
+    ports:
+      - "8080:8080"
+
+  front:
+    build:
+      context: ./front
+      args:
+        # URL vista desde el NAVEGADOR del host (no el nombre de servicio
+        # Docker `gateway`) — se hornea en el JS en build-time y parametriza
+        # la CSP (front/nginx.conf.template). Si cambias el puerto host de
+        # gateway, hay que reconstruir esta imagen.
+        VITE_GATEWAY_BASE_URL: "http://localhost:8080"
+    depends_on:
+      - gateway
+    ports:
+      - "8082:8080"

@@ -1,0 +1,9 @@
+# Local Pi runtime state
+.atl/
+
+# infra additions
+deploy/aws/.state/
+.terraform/
+*.tfstate
+*.tfstate.*
+.codegraph/

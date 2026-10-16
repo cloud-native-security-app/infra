@@ -1,0 +1,26 @@
+{
+  "family": "security-app-front",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "__EXEC_ROLE_ARN__",
+  "containerDefinitions": [
+    {
+      "name": "front",
+      "image": "__IMG_FRONT__",
+      "essential": true,
+      "portMappings": [
+        {"name": "front", "containerPort": 8080, "protocol": "tcp"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/security-app/front",
+          "awslogs-region": "__AWS_REGION__",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
