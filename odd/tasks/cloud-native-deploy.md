@@ -62,8 +62,8 @@ Ownership rule: Terraform creates ECS services with a **bootstrap task definitio
 | CI-* | nmap-service | `nmap-service` : `odd/tasks/ci-cd-deploy.md` | `odd/ci-cd-deploy/tasks` (project: nmap-service) | planned |
 | CI-* | front | `front` : `odd/tasks/ci-cd-deploy.md` | `odd/ci-cd-deploy/tasks` (project: front) | planned |
 | CI-* | gateway | `gateway` : `odd/tasks/ci-cd-deploy.md` | `odd/ci-cd-deploy/tasks` (project: gateway) | planned |
-| H1-H5 | all 5 service repos | Harness migration: remove legacy agent harness (`CLAUDE.md`, `CHECKPOINTS.md`, `feature_list.json`, `init.sh`, `progress/`, `.claude/`, non-gentle `AGENTS.md`), preserve knowledge in README/docs/Makefile `verify` | n/a (commit `chore: replace legacy agent harness with gentle-ai conventions`) | in progress |
-| R1 | root `security-app/` | Root folder cleanup: remove empty root `.git` and copied files; move `.state/` to `infra/` untracked | n/a | pending explicit user confirmation |
+| H1-H5 | all 5 service repos | Harness migration: remove legacy agent harness (`CLAUDE.md`, `CHECKPOINTS.md`, `feature_list.json`, `init.sh`, `progress/`, `.claude/`, non-gentle `AGENTS.md`), preserve knowledge in README/docs/Makefile `verify` | n/a (commit `chore: replace legacy agent harness with gentle-ai conventions`) | done |
+| R1 | root `security-app/` | Root folder cleanup: remove empty root `.git` and copied files; move `.state/` to `infra/` untracked | n/a | done (2026-10-16) |
 
 Service repos live under `cloud-native-security-app/{broker,front,gateway,nmap-service,user-service}`.
 
@@ -112,8 +112,8 @@ Phase 1 spikes:
 
 - [x] Phase 0: `infra` repo created on `v1`; `deploy/`, compose, START.md imported (no `.state/`, no `*.sh.new`).
 - [x] Phase 0: master plan and `terraform-infra` doc written.
-- [ ] Phase 0: per-repo feature docs (broker, services) and harness migration H1-H5 (in progress).
-- [ ] R1 root cleanup (needs user confirmation).
+- [x] Phase 0: per-repo feature docs and harness migration H1-H5 (all repos on `v1`, verify green). Follow-up: broker needs a GGA-rules `AGENTS.md`.
+- [x] R1 root cleanup: root `.git` and copied files removed; `.state/` moved to `infra/deploy/aws/.state/` (gitignored).
 - [ ] Phases 1-3.
 
 ## Next step
