@@ -78,7 +78,7 @@ Service repos live under `cloud-native-security-app/{broker,front,gateway,nmap-s
 
 Phase 1 spikes:
 
-1. Amazon MQ is allowed in the Learner Lab.
+1. Amazon MQ is allowed in the Learner Lab. **Result 2026-10-17: NO**. Every `mq:*` call is denied for the `voclabs` role in us-east-1 and us-west-2 (see broker MQ-01). Fallback pending; spikes 2-4 are moot until it is chosen.
 2. Quorum queues + `x-delivery-limit` work on the available engine version and deployment mode; fallback: classic queues + DLX/TTL, or `CLUSTER_MULTI_AZ`.
 3. Definitions import via management API `POST /api/definitions`.
 4. AMQPS on 5671 uses a public CA, so the baked lab CA in nmap-service can be dropped.
