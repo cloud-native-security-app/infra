@@ -59,7 +59,7 @@ Ownership rule: Terraform creates ECS services with a **bootstrap task definitio
 | ID | Repo | Feature doc (repo + path) | Engram topic | Status |
 |---|---|---|---|---|
 | TF-01..TF-17 | infra | `infra` : `odd/tasks/terraform-infra.md` | `odd/terraform-infra/tasks` | planned |
-| MSG-01..MSG-09 | broker | `broker` : `odd/tasks/sqs-sns-migration.md` | `odd/sqs-sns-migration/tasks` | planned (topology Proposed) |
+| MSG-01..MSG-09 | broker | `broker` : `odd/tasks/sqs-sns-migration.md` | `odd/sqs-sns-migration/tasks` | planned (topology signed off 2026-10-17, MSG-01 done) |
 | MSG-GW-01..MSG-GW-04 | gateway | `gateway` : `odd/tasks/sqs-sns-adapter.md` | `odd/sqs-sns-adapter/tasks` (project: gateway) | planned |
 | MSG-NM-01..MSG-NM-05 | nmap-service | `nmap-service` : `odd/tasks/sqs-sns-adapter.md` | `odd/sqs-sns-adapter/tasks` (project: nmap-service) | planned |
 | MQ-* | broker | `broker` : `odd/tasks/amazon-mq-migration.md` | `odd/amazon-mq-migration/tasks` | superseded 2026-10-17 by MSG-*; MQ-01 spike result kept |
@@ -125,4 +125,4 @@ Phase 1 spikes:
 
 ## Next step
 
-MSG-01 (user decisions on the open topology questions in `broker` : `odd/tasks/sqs-sns-migration.md`) and spike 7 (`LabRole` SQS/SNS from ECS, MSG-02), then the remaining Phase 1 spikes (5, 6) before any Terraform work.
+MSG-01 is done (topology signed off 2026-10-17 in `broker` : `odd/tasks/sqs-sns-migration.md`). Next: spike 7 (`LabRole` SQS/SNS from ECS, MSG-02), then the remaining Phase 1 spikes (5, 6) before any Terraform work.
