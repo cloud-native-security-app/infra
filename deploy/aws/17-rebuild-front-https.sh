@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/00-env.sh"
-cd "$REPO_ROOT"
 
 GATEWAY_PUBLIC_URL=$(cat "$STATE_DIR/gateway_public_url.txt")
 if [[ "$GATEWAY_PUBLIC_URL" != https://* ]]; then
@@ -11,7 +10,7 @@ fi
 
 docker build \
   --build-arg VITE_GATEWAY_BASE_URL="$GATEWAY_PUBLIC_URL" \
-  -t "$IMG_FRONT" ./front
+  -t "$IMG_FRONT" "$SERVICES_ROOT/front"
 docker push "$IMG_FRONT"
 
 echo "front reconstruido con VITE_GATEWAY_BASE_URL=$GATEWAY_PUBLIC_URL"

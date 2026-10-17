@@ -41,7 +41,7 @@ export IMG_MONGO="public.ecr.aws/docker/library/mongo:7"
 # `/` al pasárselo a un .exe nativo (aws.exe, docker.exe): `/ecs/security-app/x`
 # llega como `C:/Program Files/Git/ecs/security-app/x`, y el `-subj "/CN=..."`
 # de openssl igual. Se desactiva esa conversión y, a cambio, las rutas propias
-# (STATE_DIR/REPO_ROOT) se expresan en formato `C:/...`, que entienden tanto
+# (STATE_DIR/SERVICES_ROOT) se expresan en formato `C:/...`, que entienden tanto
 # bash como los .exe nativos. En Linux/macOS no existe `cygpath` y esto no
 # cambia nada.
 export MSYS_NO_PATHCONV=1
@@ -54,8 +54,10 @@ to_native_path() {
 export STATE_DIR="$(to_native_path "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.state")"
 mkdir -p "$STATE_DIR"
 
-# Raíz del repo (deploy/aws/ está 2 niveles por debajo).
-export REPO_ROOT="$(to_native_path "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)")"
+# Carpeta que contiene los repos de servicios (user-service, nmap-service,
+# gateway, front, broker), hermanos de `infra`: deploy/aws/ está 3 niveles por
+# debajo. Se puede sobrescribir exportando SERVICES_ROOT.
+export SERVICES_ROOT="${SERVICES_ROOT:-$(to_native_path "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)")}"
 
 # URL pública de front: http:// hasta que 15-enable-https-gateway.sh habilita
 # HTTPS en el ALB y guarda la versión https:// en front_public_url.txt.
