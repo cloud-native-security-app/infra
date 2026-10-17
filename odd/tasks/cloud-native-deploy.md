@@ -87,8 +87,8 @@ Phase 1 spikes:
 2. ~~Quorum queues + `x-delivery-limit` on Amazon MQ~~ Superseded 2026-10-17 (replaced by `RedrivePolicy.maxReceiveCount`, covered by broker MSG-06).
 3. ~~Definitions import via management API~~ Superseded 2026-10-17 (topology is Terraform, TF-10).
 4. ~~AMQPS public CA / drop baked lab CA~~ Superseded 2026-10-17 (SQS/SNS use public-CA HTTPS; lab CA dropped in nmap-service MSG-NM-05).
-5. S3 bucket available for Terraform state.
-6. `LabRole` can read SSM / Secrets Manager for OAuth secrets.
+5. S3 bucket available for Terraform state. **Result 2026-10-17: YES.** create-bucket, public-access block, versioning, default SSE (AES256), put/get of a state object all work for `voclabs`; bucket deleted afterwards. Not tested: S3 native state locking (`use_lockfile`, conditional writes); verify on the first `terraform init` in TF-03.
+6. `LabRole` can read SSM / Secrets Manager for OAuth secrets. **Result 2026-10-17: YES, both.** A Fargate task with `LabRole` received an SSM SecureString and a Secrets Manager secret through the task-definition `secrets` field (execution role) and read both through the API (task role). Dummy values only; resources deleted afterwards. TF-16 can use either; SSM SecureString is the cheaper default.
 7. **New:** `LabRole` can use SQS and SNS from inside a running ECS Fargate task (send, receive, delete, change visibility, publish; SSE-SQS vs KMS). Tracked as broker MSG-02. **Result 2026-10-17: YES.** A Fargate task (image `public.ecr.aws/aws-cli/aws-cli`, task and execution role `LabRole`, default VPC with public IP) ran as `assumed-role/LabRole` and passed: SNS publish with a `routing_key` attribute, SQS receive through the raw-delivery subscription, change-visibility, send to the DLQ, delete, get-attributes, all on SSE-SQS queues. Test resources deleted afterwards. Gotchas: the first `run-task` in a fresh account fails until the ECS service-linked role propagates (retry); a deleted queue name cannot be reused for 60 s.
 
 ## Out of scope
@@ -121,8 +121,9 @@ Phase 1 spikes:
 - [x] Phase 0: per-repo feature docs and harness migration H1-H5 (all repos on `v1`, verify green). Follow-up: broker needs a GGA-rules `AGENTS.md`.
 - [x] R1 root cleanup: root `.git` and copied files removed; `.state/` moved to `infra/deploy/aws/.state/` (gitignored).
 - [x] 2026-10-17: spike 1 recorded (Amazon MQ denied; SQS/SNS allowed). User decision: SQS + SNS replaces RabbitMQ. Messaging plans written (`broker` MSG-*, `gateway` and `nmap-service` `sqs-sns-adapter`); TF-10 replaced.
-- [ ] Phases 1-3.
+- [x] Phase 1 (2026-10-17): all spikes recorded; messaging topology signed off.
+- [ ] Phases 2-3.
 
 ## Next step
 
-MSG-01 is done (topology signed off 2026-10-17 in `broker` : `odd/tasks/sqs-sns-migration.md`). Spike 7 passed (2026-10-17). Next: the remaining Phase 1 spikes (5: S3 state bucket, 6: LabRole SSM/Secrets Manager) before any Terraform work; broker MSG-03 (LocalStack) can run in parallel.
+MSG-01 is done (topology signed off 2026-10-17 in `broker` : `odd/tasks/sqs-sns-migration.md`). Phase 1 is complete: spikes 1 (no; SQS/SNS chosen), 5, 6 and 7 passed (2026-10-17). Next: Phase 2, starting with TF-01 (fix compose paths) and TF-02/TF-03 (Terraform skeleton and S3 backend); broker MSG-03 (LocalStack) can run in parallel.
