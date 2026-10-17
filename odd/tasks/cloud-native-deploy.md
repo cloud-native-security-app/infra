@@ -35,7 +35,7 @@ deploy per service, and a cloud-native messaging layer on managed services (no b
 ## Constraints
 
 - AWS Academy Learner Lab: no `iam:CreateRole`, so no GitHub OIDC; reuse the existing `LabRole` (already used as `EXEC_ROLE_NAME` in `deploy/aws/00-env.sh`).
-- **Shared `LabRole`, no per-service least privilege.** Every ECS task (execution and task role) uses `LabRole`, so the per-service RabbitMQ users/ACLs of the old broker have no equivalent. Accepted tradeoff (2026-10-17). Mitigation: resource-level SQS queue policies and SNS topic policies. `LabRole` access to SQS/SNS from inside a running ECS task is unverified (spike 7).
+- **Shared `LabRole`, no per-service least privilege.** Every ECS task (execution and task role) uses `LabRole`, so the per-service RabbitMQ users/ACLs of the old broker have no equivalent. Accepted tradeoff (2026-10-17). Mitigation: resource-level SQS queue policies and SNS topic policies. `LabRole` access to SQS/SNS from inside a running ECS task is verified (spike 7, 2026-10-17).
 - Cloud Map namespace (`security-app.local`) must be created via the ECS cluster `service_connect_defaults`, not as a standalone namespace.
 - Learner Lab credentials are temporary. They are refreshed into GitHub secrets before each deploy (accepted by the user; helper: `refresh-gh-secrets.sh`, task TF-14).
 - Never commit `deploy/aws/.state/` or any `*.tfstate` (gitignored).
@@ -89,7 +89,7 @@ Phase 1 spikes:
 4. ~~AMQPS public CA / drop baked lab CA~~ Superseded 2026-10-17 (SQS/SNS use public-CA HTTPS; lab CA dropped in nmap-service MSG-NM-05).
 5. S3 bucket available for Terraform state.
 6. `LabRole` can read SSM / Secrets Manager for OAuth secrets.
-7. **New:** `LabRole` can use SQS and SNS from inside a running ECS Fargate task (send, receive, delete, change visibility, publish; SSE-SQS vs KMS). Tracked as broker MSG-02. Fallback if denied: decide with the user before TF-10.
+7. **New:** `LabRole` can use SQS and SNS from inside a running ECS Fargate task (send, receive, delete, change visibility, publish; SSE-SQS vs KMS). Tracked as broker MSG-02. **Result 2026-10-17: YES.** A Fargate task (image `public.ecr.aws/aws-cli/aws-cli`, task and execution role `LabRole`, default VPC with public IP) ran as `assumed-role/LabRole` and passed: SNS publish with a `routing_key` attribute, SQS receive through the raw-delivery subscription, change-visibility, send to the DLQ, delete, get-attributes, all on SSE-SQS queues. Test resources deleted afterwards. Gotchas: the first `run-task` in a fresh account fails until the ECS service-linked role propagates (retry); a deleted queue name cannot be reused for 60 s.
 
 ## Out of scope
 
@@ -125,4 +125,4 @@ Phase 1 spikes:
 
 ## Next step
 
-MSG-01 is done (topology signed off 2026-10-17 in `broker` : `odd/tasks/sqs-sns-migration.md`). Next: spike 7 (`LabRole` SQS/SNS from ECS, MSG-02), then the remaining Phase 1 spikes (5, 6) before any Terraform work.
+MSG-01 is done (topology signed off 2026-10-17 in `broker` : `odd/tasks/sqs-sns-migration.md`). Spike 7 passed (2026-10-17). Next: the remaining Phase 1 spikes (5: S3 state bucket, 6: LabRole SSM/Secrets Manager) before any Terraform work; broker MSG-03 (LocalStack) can run in parallel.
