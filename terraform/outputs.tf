@@ -58,6 +58,11 @@ output "ecr_repositories" {
   value       = local.ecr_repositories
 }
 
+output "ecr_repository_urls" {
+  description = "ECR repository URLs by service."
+  value       = { for name, repo in aws_ecr_repository.app : name => repo.repository_url }
+}
+
 output "task_families" {
   description = "ECS task definition family names by service."
   value       = local.task_families

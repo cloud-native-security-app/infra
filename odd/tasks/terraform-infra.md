@@ -40,7 +40,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [x] |
 | TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [x] |
 | TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [x] |
-| TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [ ] |
+| TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [x] |
 | TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [ ] |
 | TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [ ] |
 | TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [ ] |
@@ -66,7 +66,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-06 done (live plans verified 2026-10-18). Next: TF-07 (ECR repos).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-07 done (live plans verified 2026-10-18). Next: TF-08 (ALB, listeners, HTTPS).
 
 ## TF-01 evidence
 
@@ -151,3 +151,13 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: `terraform/iam.tf` (`data "aws_iam_role" "lab"` by `local.lab_role_name`) and output `lab_role_arn`. No role is created.
 - Live (2026-10-18): read-only `terraform plan -lock=false` resolved `lab_role_arn = arn:aws:iam::<account_id>:role/LabRole` (iam:GetRole is allowed); still `Plan: 11 to add` (the TF-05 SGs). Nothing was applied.
 - Commit: 06ac77f (code, tests and this doc). Review assess: medium, `under_budget` (no review due).
+
+## TF-07 evidence
+
+- Route: direct inline (one resource file plus an output and a test). TDD Strict, runner `make verify`. Branch `feature/ecr_repos`.
+- Pre-check (read-only): no ECR repositories existed in the account, so there was nothing to import.
+- RED: `terraform test` failed on the new `tests/ecr.tftest.hcl` (undeclared resources; 10 passed, 1 failed, 2 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 13 passed.
+- Change: `terraform/ecr.tf` with `aws_ecr_repository.app` for the 4 app services (scan on push, `MUTABLE`, `force_delete = true`) and `aws_ecr_lifecycle_policy.app` (expire untagged images after 7 days). Output `ecr_repository_urls`.
+- Decisions: tags stay `MUTABLE` because `deploy/aws` still pushes `:latest` (revisit with the service CI, which pushes SHA tags). `force_delete` lets `terraform destroy` remove repos holding rebuildable images. The lifecycle policy is new: each `:latest` push leaves the previous image untagged.
+- Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 19 to add` (11 SG resources plus 4 repos and 4 lifecycle policies). Nothing was applied.
