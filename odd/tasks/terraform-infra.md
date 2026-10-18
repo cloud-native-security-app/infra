@@ -39,7 +39,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-03 | S3 backend for remote state | `.state/*.txt` | [x] |
 | TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [x] |
 | TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [x] |
-| TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [ ] |
+| TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [x] |
 | TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [ ] |
 | TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [ ] |
 | TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [ ] |
@@ -66,7 +66,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03, TF-04 and TF-05 done (live plans verified 2026-10-18). Next: TF-06.
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-06 done (live plans verified 2026-10-18). Next: TF-07 (ECR repos).
 
 ## TF-01 evidence
 
@@ -142,3 +142,11 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 11 to add, 0 to change, 0 to destroy`. Nothing was applied.
 - Commit: 85c6891 (code, tests and this doc).
 - Native review (RDD): risk high, consent granted, 4 lenses, 0 findings; approved and acknowledged 2026-10-18 (lineage `review-33d083b97de1e36b`, authority burned).
+
+## TF-06 evidence
+
+- Route: direct inline (one data source plus an output and a test). TDD Strict, runner `make verify`. Branch `feature/lab_role`.
+- RED: `terraform test` failed on the new `tests/iam.tftest.hcl` (undeclared `data.aws_iam_role.lab`; 9 passed, 1 failed).
+- GREEN: `make verify` exit 0; `terraform test` 10 passed.
+- Change: `terraform/iam.tf` (`data "aws_iam_role" "lab"` by `local.lab_role_name`) and output `lab_role_arn`. No role is created.
+- Live (2026-10-18): read-only `terraform plan -lock=false` resolved `lab_role_arn = arn:aws:iam::<account_id>:role/LabRole` (iam:GetRole is allowed); still `Plan: 11 to add` (the TF-05 SGs). Nothing was applied.

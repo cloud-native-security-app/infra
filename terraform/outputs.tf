@@ -48,6 +48,11 @@ output "lab_role_name" {
   value       = local.lab_role_name
 }
 
+output "lab_role_arn" {
+  description = "ARN of the pre-existing Learner Lab IAM role (ECS task and execution role)."
+  value       = data.aws_iam_role.lab.arn
+}
+
 output "ecr_repositories" {
   description = "ECR repository names by service."
   value       = local.ecr_repositories
