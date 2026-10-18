@@ -8,5 +8,8 @@ terraform {
     }
   }
 
-  # TF-03 adds the S3 backend block here (local backend until then).
+  # Partial configuration: key, region and locking come from backend.hcl and the
+  # bucket from -backend-config="bucket=..." (see README.md). Plain `init` needs
+  # AWS; verify and the tests use `init -backend=false`.
+  backend "s3" {}
 }

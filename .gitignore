@@ -4,6 +4,7 @@
 # infra additions
 deploy/aws/.state/
 .terraform/
+.terraform-verify/
 *.tfstate
 *.tfstate.*
 .codegraph/
