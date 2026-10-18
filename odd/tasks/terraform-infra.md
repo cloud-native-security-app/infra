@@ -38,7 +38,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-02 | Terraform skeleton: providers, `variables.tf` (region, project, `desired_count`), locals matching `00-env.sh` names | `00-env.sh` | [x] |
 | TF-03 | S3 backend for remote state | `.state/*.txt` | [x] |
 | TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [x] |
-| TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [ ] |
+| TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [x] |
 | TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [ ] |
 | TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [ ] |
 | TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [ ] |
@@ -66,7 +66,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 and TF-04 done (TF-04 live plan verified 2026-10-18). Next: TF-05 (security groups).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03, TF-04 and TF-05 done (live plans verified 2026-10-18). Next: TF-06.
 
 ## TF-01 evidence
 
@@ -129,3 +129,16 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: `terraform/network.tf` (`data.aws_vpc.default`, `data.aws_subnets.default` filtered by `vpc-id` and `default-for-az`); `locals.vpc_id` and `locals.subnet_ids = sort(...)`; outputs `vpc_id`, `subnet_ids` (precondition: at least 2 subnets for the ALB). `skeleton.tftest.hcl` now mocks `aws_subnets` so its runs satisfy the precondition.
 - Commit: 301458f (code and tests), doc commit follows.
 - Live (2026-10-18): `terraform init -reconfigure` on the S3 backend, then a read-only `terraform plan -lock=false` with profile `learnerlab`. It resolved `vpc_id = vpc-0dc74a0e189367f3a` and 6 default subnets (sorted), with no resource changes (outputs only). Nothing was applied.
+
+## TF-05 evidence
+
+- Route: direct inline (one non-trivial file, `security_groups.tf`, plus its test). TDD Strict, runner `make verify`. Branch `feature/security_groups`.
+- Pre-check (read-only): the default VPC held only the `default` SG, so there was nothing to import.
+- RED: `terraform test` failed on the new `tests/security_groups.tftest.hcl` (resources undeclared; 1 failed, 2 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 9 passed.
+- Change: `aws_security_group.alb` (ingress 80/443/8080 from 0.0.0.0/0; egress only TCP 8080 to the internal SG) and `aws_security_group.internal` (self ingress 5432/27017/8080; 8080 from the ALB SG; all egress). Uses the standalone `aws_vpc_security_group_*_rule` resources. Outputs `alb_sg_id`, `internal_sg_id`.
+- Deviations from `04-network.sh`: the RabbitMQ ports 5672/5671/15672 were dropped (SNS/SQS replace RabbitMQ), and ALB egress was narrowed from all traffic to the tasks' container port.
+- Test note: the SG tests use `command = apply` on the mocked provider, because `override_resource` ids stay unknown during `plan`.
+- Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 11 to add, 0 to change, 0 to destroy`. Nothing was applied.
+- Commit: 85c6891 (code, tests and this doc).
+- Native review (RDD): risk high, consent granted, 4 lenses, 0 findings; approved and acknowledged 2026-10-18 (lineage `review-33d083b97de1e36b`, authority burned).
