@@ -38,6 +38,7 @@ deploy per service, and a cloud-native messaging layer on managed services (no b
 - **Shared `LabRole`, no per-service least privilege.** Every ECS task (execution and task role) uses `LabRole`, so the per-service RabbitMQ users/ACLs of the old broker have no equivalent. Accepted tradeoff (2026-10-17). Mitigation: resource-level SQS queue policies and SNS topic policies. `LabRole` access to SQS/SNS from inside a running ECS task is verified (spike 7, 2026-10-17).
 - Cloud Map namespace (`security-app.local`) must be created via the ECS cluster `service_connect_defaults`, not as a standalone namespace.
 - Learner Lab credentials are temporary. They are refreshed into GitHub secrets before each deploy (accepted by the user; helper: `refresh-gh-secrets.sh`, task TF-14).
+- No `aws_s3_bucket` can be managed by Terraform in this Learner Lab: an SCP explicitly denies `s3:GetBucketObjectLockConfiguration`, which the aws provider calls on every read. The state bucket is created with AWS CLI (`infra/scripts/bootstrap-state-bucket.sh`).
 - Never commit `deploy/aws/.state/` or any `*.tfstate` (gitignored).
 
 ## Target layout
