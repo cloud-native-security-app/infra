@@ -173,3 +173,5 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Tests: `tests/mocks/aws.tfmock.hcl` gives `aws_lb`, `aws_lb_target_group` and `aws_acm_certificate` valid ARN defaults, because the provider validates ARN shapes on mocked `apply`; every test file now uses `mock_provider "aws" { source = "./tests/mocks" }`.
 - Deviation from the scripts: Terraform goes straight to the HTTPS end state (the HTTP-only listeners of `06-alb.sh` are not recreated). The certificate private key moves from `.state/gateway-cert/` to the encrypted S3 state.
 - Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 28 to add` (19 earlier plus the ALB, 2 TGs, 3 listeners, key, certificate and ACM import). Nothing was applied.
+- Commit: df9514c (code, tests and this doc).
+- Native review (RDD): risk high, consent granted, 4 lenses, 0 findings; approved and acknowledged 2026-10-18 (lineage `review-dd69d20be332141c`, authority burned).
