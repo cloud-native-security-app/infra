@@ -1,4 +1,5 @@
-TF := terraform -chdir=terraform
+# verify uses its own data dir so a live backend init in terraform/.terraform does not interfere.
+TF := TF_DATA_DIR=.terraform-verify terraform -chdir=terraform
 
 .PHONY: verify
 verify:
