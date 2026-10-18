@@ -1,4 +1,6 @@
-mock_provider "aws" {}
+mock_provider "aws" {
+  source = "./tests/mocks"
+}
 
 override_data {
   target = data.aws_subnets.default

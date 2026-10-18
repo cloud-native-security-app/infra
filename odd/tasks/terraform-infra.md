@@ -41,7 +41,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [x] |
 | TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [x] |
 | TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [x] |
-| TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [ ] |
+| TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [x] |
 | TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [ ] |
 | TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [ ] |
 | TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [ ] |
@@ -66,7 +66,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-07 done (live plans verified 2026-10-18). Next: TF-08 (ALB, listeners, HTTPS).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-08 done (live plans verified 2026-10-18). Next: TF-09 (ECS cluster, namespace, log groups).
 
 ## TF-01 evidence
 
@@ -162,3 +162,14 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Decisions: tags stay `MUTABLE` because `deploy/aws` still pushes `:latest` (revisit with the service CI, which pushes SHA tags). `force_delete` lets `terraform destroy` remove repos holding rebuildable images. The lifecycle policy is new: each `:latest` push leaves the previous image untagged.
 - Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 19 to add` (11 SG resources plus 4 repos and 4 lifecycle policies). Nothing was applied.
 - Commit: e18cf8b (code, tests and this doc). Review assess: medium, `under_budget` (no review due).
+
+## TF-08 evidence
+
+- Route: direct inline (one resource file `alb.tf`, its test, shared mocks, outputs, provider pin). TDD Strict, runner `make verify`. Branch `feature/alb_https`.
+- RED: `terraform test` failed on the new `tests/alb.tftest.hcl` (undeclared resources; 13 passed, 1 failed, 4 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 18 passed.
+- Change: `terraform/alb.tf` with `aws_lb.main` (internet-facing, default subnets, ALB SG, `drop_invalid_header_fields`), `aws_lb_target_group.app` for front (`/`) and gateway (`/health`) on 8080 by IP with the `06-alb.sh` health timings, `tls_private_key` + `tls_self_signed_cert` (CN and SAN = ALB DNS, 365 days, renewed by a plan within 30 days of expiry), `aws_acm_certificate.alb` (`create_before_destroy`), and listeners 80 -> 301 to HTTPS 443, 443 HTTPS -> front, 8080 HTTPS -> gateway (policy `ELBSecurityPolicy-TLS13-1-2-2021-06`). Outputs `alb_dns`, `front_public_url`, `gateway_public_url`.
+- Provider: `hashicorp/tls ~> 4.0` (locked 4.4.1 for the 4 platforms; aws lock unchanged).
+- Tests: `tests/mocks/aws.tfmock.hcl` gives `aws_lb`, `aws_lb_target_group` and `aws_acm_certificate` valid ARN defaults, because the provider validates ARN shapes on mocked `apply`; every test file now uses `mock_provider "aws" { source = "./tests/mocks" }`.
+- Deviation from the scripts: Terraform goes straight to the HTTPS end state (the HTTP-only listeners of `06-alb.sh` are not recreated). The certificate private key moves from `.state/gateway-cert/` to the encrypted S3 state.
+- Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 28 to add` (19 earlier plus the ALB, 2 TGs, 3 listeners, key, certificate and ACM import). Nothing was applied.

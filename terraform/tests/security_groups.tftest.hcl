@@ -1,5 +1,7 @@
 # Mocked provider: `apply` creates nothing real and resolves the overridden SG ids.
-mock_provider "aws" {}
+mock_provider "aws" {
+  source = "./tests/mocks"
+}
 
 override_data {
   target = data.aws_vpc.default
