@@ -30,3 +30,16 @@ terraform init -backend-config=backend.hcl -backend-config="bucket=$BUCKET"
 `make verify` uses `init -backend=false`, so it needs no credentials and no bucket.
 
 `make verify` also runs `scripts/test-bootstrap-state-bucket.sh`, which tests the script against a fake `aws` binary.
+
+## Cloud Map namespace
+
+The Service Connect namespace (`<project>.local`) also lives outside Terraform. The Learner Lab role is denied `servicediscovery:CreateHttpNamespace`, but ECS can create the namespace itself when a cluster is created with `--service-connect-defaults namespace=<name>`. The aws provider needs the namespace ARN, so Terraform reads it with a data source (`ecs.tf`) and manages the real cluster and log groups.
+
+Run once before the first `terraform apply` (idempotent; if the namespace is listed it does nothing):
+
+```sh
+AWS_PROFILE=learnerlab scripts/bootstrap-namespace.sh
+```
+
+It creates a throwaway cluster `<project>-ns-bootstrap` so ECS creates the namespace, waits until it is listable, then deletes the throwaway cluster (the namespace is kept). The last stdout line is the namespace ARN. `--dry-run` prints the planned commands. `make verify` tests it with `scripts/test-bootstrap-namespace.sh` against a fake `aws` binary.
+

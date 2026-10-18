@@ -1,4 +1,6 @@
 mock_provider "aws" {
+  source = "./tests/mocks"
+
   # Networking data sources (network.tf) need at least 2 subnets for the output precondition.
   override_data {
     target = data.aws_subnets.default
