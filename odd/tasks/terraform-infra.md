@@ -161,3 +161,4 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: `terraform/ecr.tf` with `aws_ecr_repository.app` for the 4 app services (scan on push, `MUTABLE`, `force_delete = true`) and `aws_ecr_lifecycle_policy.app` (expire untagged images after 7 days). Output `ecr_repository_urls`.
 - Decisions: tags stay `MUTABLE` because `deploy/aws` still pushes `:latest` (revisit with the service CI, which pushes SHA tags). `force_delete` lets `terraform destroy` remove repos holding rebuildable images. The lifecycle policy is new: each `:latest` push leaves the previous image untagged.
 - Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 19 to add` (11 SG resources plus 4 repos and 4 lifecycle policies). Nothing was applied.
+- Commit: e18cf8b (code, tests and this doc). Review assess: medium, `under_budget` (no review due).
