@@ -37,7 +37,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-01 | Fix compose build paths to `../<svc>` in `docker-compose.yml`; remove `REPO_ROOT` assumptions (`cd "$REPO_ROOT"` in `05`, `07`, `17`; definition in `00-env.sh`) | `00-env.sh`, `05`, `07`, `17` | [x] |
 | TF-02 | Terraform skeleton: providers, `variables.tf` (region, project, `desired_count`), locals matching `00-env.sh` names | `00-env.sh` | [x] |
 | TF-03 | S3 backend for remote state | `.state/*.txt` | [x] |
-| TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [ ] |
+| TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [x] |
 | TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [ ] |
 | TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [ ] |
 | TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [ ] |
@@ -66,7 +66,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). Next: TF-03 (S3 backend with `use_lockfile`; Phase 1 spikes passed 2026-10-17, S3 native locking still to verify on first `terraform init`).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 and TF-04 done (TF-04 live plan verified 2026-10-18). Next: TF-05 (security groups).
 
 ## TF-01 evidence
 
@@ -120,3 +120,12 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - `scripts/bootstrap-state-bucket.sh` (AWS_PROFILE=learnerlab) re-applied settings on the existing bucket `security-app-tfstate-<account_id>` and verified versioning Enabled, SSE AES256, full public-access block and the TLS-only deny policy; a second run was idempotent.
 - `terraform init -backend-config=backend.hcl -backend-config="bucket=$BUCKET"` succeeded; a concurrent `plan -lock-timeout=0s` failed with "Error acquiring the state lock" (native `use_lockfile` locking works); `terraform plan` through the backend shows output changes only.
 - `make verify` now uses `TF_DATA_DIR=.terraform-verify` so a live backend init does not break offline verification (commit `3486051`).
+
+## TF-04 evidence
+
+- Route: delegated writer (bounded), TDD Strict, runner `make verify`. Branch `feature/network_data`.
+- RED: `terraform test` failed on the new `tests/network.tftest.hcl` before any implementation (undeclared data sources and outputs; 1 failed, 1 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 6 passed (vpc_id equals mocked VPC; unsorted mocked subnets come out sorted; at least 2 subnets; 1 subnet rejected via `expect_failures = [output.subnet_ids]`).
+- Change: `terraform/network.tf` (`data.aws_vpc.default`, `data.aws_subnets.default` filtered by `vpc-id` and `default-for-az`); `locals.vpc_id` and `locals.subnet_ids = sort(...)`; outputs `vpc_id`, `subnet_ids` (precondition: at least 2 subnets for the ALB). `skeleton.tftest.hcl` now mocks `aws_subnets` so its runs satisfy the precondition.
+- Commit: 301458f (code and tests), doc commit follows.
+- Live (2026-10-18): `terraform init -reconfigure` on the S3 backend, then a read-only `terraform plan -lock=false` with profile `learnerlab`. It resolved `vpc_id = vpc-0dc74a0e189367f3a` and 6 default subnets (sorted), with no resource changes (outputs only). Nothing was applied.
