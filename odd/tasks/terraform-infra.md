@@ -87,3 +87,26 @@ Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, d
 - `.mise.toml` (terraform 1.16.6, tflint 0.64.0, shellcheck 0.11.0) committed in its own commit.
 - Makefile: shellcheck now covers `scripts/*.sh` only; `deploy/aws/*.sh` has 24 pre-existing findings (3 warning, 21 note), left unfixed and out of `verify`.
 - Commits: 8a8566d (mise), b71c2a5 (skeleton).
+
+## TF-03 evidence (code done; live steps pending, task stays unchecked)
+
+- Route: delegated writer (bounded), TDD Strict, runner `make verify`.
+- RED: `scripts/check-backend.sh` failed (no `backend "s3" {}`, no `backend.hcl`); `terraform -chdir=terraform/bootstrap test` failed (module did not exist: unknown provider, 0 runs).
+- GREEN: bootstrap `terraform test` 7 passed (name format, project override, force_destroy false, versioning Enabled, AES256, 4 public-access flags, SecureTransport deny); main root 4 passed; `make verify` exit 0, no credentials, no backend.
+- Layout: `terraform/bootstrap/` (local state, gitignored; bucket `<project>-tfstate-<account_id>`, `prevent_destroy`, `force_destroy = false`); main root `backend "s3" {}` partial + committed `terraform/backend.hcl` (key, region, `use_lockfile = true`, `encrypt = true`); `terraform/README.md`.
+- Backend assertions: `scripts/check-backend.sh` (Terraform tests cannot inspect backend blocks), wired into `make verify`.
+- Bucket name is passed with `-backend-config="bucket=$BUCKET"` (simplest; keeps the account ID out of git).
+- Commit: 61d6be0.
+
+### Pending live steps
+
+```sh
+export AWS_PROFILE=learnerlab
+terraform -chdir=terraform/bootstrap init
+terraform -chdir=terraform/bootstrap apply
+BUCKET="$(terraform -chdir=terraform/bootstrap output -raw state_bucket_name)"
+cd terraform && terraform init -backend-config=backend.hcl -backend-config="bucket=$BUCKET"
+# Lock check: run two plans concurrently; the second must report a state lock error
+terraform plan -lock-timeout=0s & terraform plan -lock-timeout=0s; wait
+# Or watch the lock object while a plan runs: security-app/terraform.tfstate.tflock in the bucket
+```
