@@ -34,7 +34,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | ID | Task | Replaces (in `deploy/aws/`) | Done |
 |---|---|---|---|
 | TF-01 | Fix compose build paths to `../<svc>` in `docker-compose.yml`; remove `REPO_ROOT` assumptions (`cd "$REPO_ROOT"` in `05`, `07`, `17`; definition in `00-env.sh`) | `00-env.sh`, `05`, `07`, `17` | [x] |
-| TF-02 | Terraform skeleton: providers, `variables.tf` (region, project, `desired_count`), locals matching `00-env.sh` names | `00-env.sh` | [ ] |
+| TF-02 | Terraform skeleton: providers, `variables.tf` (region, project, `desired_count`), locals matching `00-env.sh` names | `00-env.sh` | [x] |
 | TF-03 | S3 backend for remote state | `.state/*.txt` | [ ] |
 | TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [ ] |
 | TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [ ] |
@@ -65,7 +65,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 done (compose and scripts use sibling repos). 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). Next: TF-02 (Terraform skeleton) and TF-03 (S3 backend; Phase 1 spikes passed 2026-10-17, S3 native locking still to verify on first `terraform init`).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). Next: TF-03 (S3 backend with `use_lockfile`; Phase 1 spikes passed 2026-10-17, S3 native locking still to verify on first `terraform init`).
 
 ## TF-01 evidence
 
@@ -77,3 +77,13 @@ Status: TF-01 done (compose and scripts use sibling repos). 2026-10-17: TF-10 re
 
 - Native review (RDD): risk high, consent granted, 4 lenses (risk, resilience, readability, reliability), no blocking findings; approved and acknowledged 2026-10-17 (lineage `review-85e5427206d4516a`, authority burned). Reviewed boundary advances to `eece9a4`.
 - Delivery: branch `feature/compose_paths` pushed to origin; merge into `develop` is the user's decision.
+
+## TF-02 evidence
+
+- Route: delegated writer (bounded), TDD Strict, runner `make verify` (adds `terraform fmt -check`, `init -backend=false`, `validate`, `test`, `tflint`).
+- RED: `terraform test` failed on the first run (undeclared outputs and variables; 3 runs skipped) before any implementation.
+- GREEN: `terraform test` 4 passed (names match `00-env.sh`, `desired_count` default 1, negative rejected via `expect_failures`, 0 accepted); `make verify` exit 0, no AWS credentials needed (`mock_provider "aws"`).
+- Layout: `terraform/` with `versions.tf` (`~> 1.16.0`, aws `~> 6.0`), `providers.tf` (`default_tags`), `variables.tf`, `locals.tf`, `outputs.tf`, `.tflint.hcl` (terraform recommended + aws ruleset 0.40.0), committed `.terraform.lock.hcl` (linux_amd64, windows_amd64, darwin_arm64, darwin_amd64). Backend block marker left for TF-03.
+- `.mise.toml` (terraform 1.16.6, tflint 0.64.0, shellcheck 0.11.0) committed in its own commit.
+- Makefile: shellcheck now covers `scripts/*.sh` only; `deploy/aws/*.sh` has 24 pre-existing findings (3 warning, 21 note), left unfixed and out of `verify`.
+- Commits: 8a8566d (mise), b71c2a5 (skeleton).
