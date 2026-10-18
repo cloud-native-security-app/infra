@@ -17,7 +17,6 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 - AWS Academy Learner Lab: reuse `LabRole` (data source), no IAM role creation; region `us-east-1`.
 - Cloud Map namespace comes from ECS cluster `service_connect_defaults`.
-- `voclabs` is denied `servicediscovery:CreateHttpNamespace` and the aws provider needs a namespace ARN, so the namespace is created by `scripts/bootstrap-namespace.sh` (throwaway cluster, AWS CLI) and read by a Terraform data source.
 - App ECS services use a bootstrap task def and `lifecycle { ignore_changes = [task_definition] }`.
 - Spikes (master Phase 1) gate TF-03 (backend bucket) and TF-10 (messaging: broker MSG-01 sign-off and MSG-02 LabRole-from-ECS spike).
 - All ECS tasks share `LabRole` (no `iam:CreateRole`): no per-service least privilege; SQS/SNS resource policies are the only isolation.
