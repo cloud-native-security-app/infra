@@ -66,7 +66,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 and TF-04 done (TF-04 live read-only plan pending). Next: TF-05 (security groups).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 and TF-04 done (TF-04 live plan verified 2026-10-18). Next: TF-05 (security groups).
 
 ## TF-01 evidence
 
@@ -128,4 +128,4 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - GREEN: `make verify` exit 0; `terraform test` 6 passed (vpc_id equals mocked VPC; unsorted mocked subnets come out sorted; at least 2 subnets; 1 subnet rejected via `expect_failures = [output.subnet_ids]`).
 - Change: `terraform/network.tf` (`data.aws_vpc.default`, `data.aws_subnets.default` filtered by `vpc-id` and `default-for-az`); `locals.vpc_id` and `locals.subnet_ids = sort(...)`; outputs `vpc_id`, `subnet_ids` (precondition: at least 2 subnets for the ALB). `skeleton.tftest.hcl` now mocks `aws_subnets` so its runs satisfy the precondition.
 - Commit: 301458f (code and tests), doc commit follows.
-- Pending: live read-only `terraform plan` against the lab (parent will add evidence here).
+- Live (2026-10-18): `terraform init -reconfigure` on the S3 backend, then a read-only `terraform plan -lock=false` with profile `learnerlab`. It resolved `vpc_id = vpc-0dc74a0e189367f3a` and 6 default subnets (sorted), with no resource changes (outputs only). Nothing was applied.
