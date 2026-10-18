@@ -36,7 +36,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 |---|---|---|---|
 | TF-01 | Fix compose build paths to `../<svc>` in `docker-compose.yml`; remove `REPO_ROOT` assumptions (`cd "$REPO_ROOT"` in `05`, `07`, `17`; definition in `00-env.sh`) | `00-env.sh`, `05`, `07`, `17` | [x] |
 | TF-02 | Terraform skeleton: providers, `variables.tf` (region, project, `desired_count`), locals matching `00-env.sh` names | `00-env.sh` | [x] |
-| TF-03 | S3 backend for remote state | `.state/*.txt` | [ ] |
+| TF-03 | S3 backend for remote state | `.state/*.txt` | [x] |
 | TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [ ] |
 | TF-05 | Security groups: ALB SG and internal SG with rules | `04-network.sh` | [ ] |
 | TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [ ] |
@@ -115,3 +115,8 @@ export AWS_PROFILE=learnerlab
 BUCKET="$(scripts/bootstrap-state-bucket.sh | tail -1)"   # live run pending
 cd terraform && terraform init -backend-config=backend.hcl -backend-config="bucket=$BUCKET"
 ```
+
+### TF-03 live run (2026-10-18)
+- `scripts/bootstrap-state-bucket.sh` (AWS_PROFILE=learnerlab) re-applied settings on the existing bucket `security-app-tfstate-<account_id>` and verified versioning Enabled, SSE AES256, full public-access block and the TLS-only deny policy; a second run was idempotent.
+- `terraform init -backend-config=backend.hcl -backend-config="bucket=$BUCKET"` succeeded; a concurrent `plan -lock-timeout=0s` failed with "Error acquiring the state lock" (native `use_lockfile` locking works); `terraform plan` through the backend shows output changes only.
+- `make verify` now uses `TF_DATA_DIR=.terraform-verify` so a live backend init does not break offline verification (commit `3486051`).
