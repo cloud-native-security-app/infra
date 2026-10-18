@@ -1,4 +1,6 @@
-mock_provider "aws" {}
+mock_provider "aws" {
+  source = "./tests/mocks"
+}
 
 run "default_vpc_and_sorted_subnets" {
   command = plan

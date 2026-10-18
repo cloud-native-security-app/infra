@@ -63,6 +63,21 @@ output "ecr_repository_urls" {
   value       = { for name, repo in aws_ecr_repository.app : name => repo.repository_url }
 }
 
+output "alb_dns" {
+  description = "Public DNS name of the ALB."
+  value       = aws_lb.main.dns_name
+}
+
+output "front_public_url" {
+  description = "Front URL (HTTPS, self-signed certificate)."
+  value       = "https://${aws_lb.main.dns_name}"
+}
+
+output "gateway_public_url" {
+  description = "Gateway URL (HTTPS on 8080); the OAuth redirect URI is <this>/auth/callback."
+  value       = "https://${aws_lb.main.dns_name}:8080"
+}
+
 output "task_families" {
   description = "ECS task definition family names by service."
   value       = local.task_families
