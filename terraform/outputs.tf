@@ -28,6 +28,16 @@ output "internal_sg_name" {
   value       = local.internal_sg_name
 }
 
+output "alb_sg_id" {
+  description = "ALB security group id."
+  value       = aws_security_group.alb.id
+}
+
+output "internal_sg_id" {
+  description = "Internal (ECS tasks) security group id."
+  value       = aws_security_group.internal.id
+}
+
 output "log_prefix" {
   description = "CloudWatch log group prefix."
   value       = local.log_prefix
