@@ -1,15 +1,11 @@
 # The Cloud Map namespace is created outside Terraform by scripts/bootstrap-namespace.sh:
-# the Learner Lab denies servicediscovery:CreateHttpNamespace, but ECS can create it itself.
-# The aws provider needs the namespace ARN here, hence a data source.
-data "aws_service_discovery_http_namespace" "main" {
-  name = local.namespace_name
-}
-
+# the Learner Lab denies servicediscovery:CreateHttpNamespace (ECS creates it instead) and
+# servicediscovery:GetNamespace (so no data source); its ARN arrives as var.namespace_arn.
 resource "aws_ecs_cluster" "main" {
   name = local.cluster_name
 
   service_connect_defaults {
-    namespace = data.aws_service_discovery_http_namespace.main.arn
+    namespace = var.namespace_arn
   }
 }
 

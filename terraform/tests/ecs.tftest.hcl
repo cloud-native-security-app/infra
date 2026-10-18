@@ -9,23 +9,18 @@ override_data {
   }
 }
 
-override_data {
-  target = data.aws_service_discovery_http_namespace.main
-  values = {
-    arn = "arn:aws:servicediscovery:us-east-1:123456789012:namespace/ns-abc"
-  }
+# The lab denies servicediscovery:GetNamespace, so the ARN comes in as a variable
+# (printed by scripts/bootstrap-namespace.sh) instead of a data source.
+variables {
+  namespace_arn = "arn:aws:servicediscovery:us-east-1:123456789012:namespace/ns-abc"
 }
 
-run "cluster_uses_namespace_from_data_source" {
+run "cluster_uses_namespace_from_variable" {
   command = apply
 
   assert {
     condition     = aws_ecs_cluster.main.name == "security-app-cluster-v2"
     error_message = "the cluster must keep the 00-env.sh name"
-  }
-  assert {
-    condition     = data.aws_service_discovery_http_namespace.main.name == "security-app.local"
-    error_message = "the namespace is looked up by name (created by scripts/bootstrap-namespace.sh)"
   }
   assert {
     condition     = aws_ecs_cluster.main.service_connect_defaults[0].namespace == "arn:aws:servicediscovery:us-east-1:123456789012:namespace/ns-abc"
@@ -74,4 +69,14 @@ run "outputs_expose_cluster_and_namespace" {
     condition     = output.log_group_names["gateway"] == "/ecs/security-app/gateway" && length(output.log_group_names) == 6
     error_message = "log_group_names must map every service to its log group"
   }
+}
+
+run "namespace_arn_must_be_a_cloud_map_arn" {
+  command = plan
+
+  variables {
+    namespace_arn = "security-app.local"
+  }
+
+  expect_failures = [var.namespace_arn]
 }

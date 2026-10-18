@@ -115,7 +115,7 @@ output "cluster_arn" {
 
 output "namespace_arn" {
   description = "Cloud Map HTTP namespace ARN (created by scripts/bootstrap-namespace.sh)."
-  value       = data.aws_service_discovery_http_namespace.main.arn
+  value       = var.namespace_arn
 }
 
 output "log_group_names" {

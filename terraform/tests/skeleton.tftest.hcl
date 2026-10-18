@@ -1,3 +1,7 @@
+variables {
+  namespace_arn = "arn:aws:servicediscovery:us-east-1:123456789012:namespace/ns-0"
+}
+
 mock_provider "aws" {
   source = "./tests/mocks"
 

@@ -19,8 +19,3 @@ mock_resource "aws_acm_certificate" {
   }
 }
 
-mock_data "aws_service_discovery_http_namespace" {
-  defaults = {
-    arn = "arn:aws:servicediscovery:us-east-1:123456789012:namespace/ns-0"
-  }
-}
