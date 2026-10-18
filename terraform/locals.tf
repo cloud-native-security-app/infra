@@ -8,7 +8,7 @@ locals {
   internal_sg_name = "${var.project}-internal-sg"
   log_prefix       = "/ecs/${var.project}"
 
-  # Learner Lab cannot create IAM roles; the data source lives in TF-06.
+  # Learner Lab cannot create IAM roles; looked up in iam.tf.
   lab_role_name = "LabRole"
 
   # Application services only; no rabbitmq repo (replaced by SNS/SQS).
