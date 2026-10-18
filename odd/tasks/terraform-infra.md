@@ -140,3 +140,5 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Deviations from `04-network.sh`: the RabbitMQ ports 5672/5671/15672 were dropped (SNS/SQS replace RabbitMQ), and ALB egress was narrowed from all traffic to the tasks' container port.
 - Test note: the SG tests use `command = apply` on the mocked provider, because `override_resource` ids stay unknown during `plan`.
 - Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 11 to add, 0 to change, 0 to destroy`. Nothing was applied.
+- Commit: 85c6891 (code, tests and this doc).
+- Native review (RDD): risk high, consent granted, 4 lenses, 0 findings; approved and acknowledged 2026-10-18 (lineage `review-33d083b97de1e36b`, authority burned).
