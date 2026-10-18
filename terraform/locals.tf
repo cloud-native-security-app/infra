@@ -26,4 +26,8 @@ locals {
     for name in ["front", "gateway"] :
     name => "${var.project}-${name}-tg"
   }
+
+  # Default VPC networking (network.tf); sorted so plans stay deterministic.
+  vpc_id     = data.aws_vpc.default.id
+  subnet_ids = sort(data.aws_subnets.default.ids)
 }

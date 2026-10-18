@@ -57,3 +57,18 @@ output "desired_count" {
   description = "Desired ECS task count (0 = paused)."
   value       = var.desired_count
 }
+
+output "vpc_id" {
+  description = "Default VPC id."
+  value       = local.vpc_id
+}
+
+output "subnet_ids" {
+  description = "Sorted default-for-az subnet ids (at least 2 AZs for the ALB)."
+  value       = local.subnet_ids
+
+  precondition {
+    condition     = length(local.subnet_ids) >= 2
+    error_message = "The ALB needs subnets in at least 2 availability zones; the default VPC returned fewer."
+  }
+}

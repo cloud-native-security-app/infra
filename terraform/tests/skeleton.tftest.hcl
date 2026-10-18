@@ -1,4 +1,12 @@
-mock_provider "aws" {}
+mock_provider "aws" {
+  # Networking data sources (network.tf) need at least 2 subnets for the output precondition.
+  override_data {
+    target = data.aws_subnets.default
+    values = {
+      ids = ["subnet-aaa", "subnet-bbb"]
+    }
+  }
+}
 
 run "names_match_00_env" {
   command = plan
