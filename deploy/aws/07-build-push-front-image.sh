@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/00-env.sh"
-cd "$REPO_ROOT"
 
 ALB_DNS=$(cat "$STATE_DIR/alb_dns.txt")
 # Si 15-enable-https-gateway.sh ya corrió (URL https:// guardada para este
@@ -18,7 +17,7 @@ echo "$GATEWAY_PUBLIC_URL" > "$STATE_DIR/gateway_public_url.txt"
 # exista (06-alb.sh) para conocer su DNS público real.
 docker build \
   --build-arg VITE_GATEWAY_BASE_URL="$GATEWAY_PUBLIC_URL" \
-  -t "$IMG_FRONT" ./front
+  -t "$IMG_FRONT" "$SERVICES_ROOT/front"
 docker push "$IMG_FRONT"
 
 echo "front construido con VITE_GATEWAY_BASE_URL=$GATEWAY_PUBLIC_URL"

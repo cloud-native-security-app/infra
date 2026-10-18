@@ -42,7 +42,7 @@ scripts (`15`-`17`).
   `ecs-tasks.amazonaws.com` + policy `AmazonECSTaskExecutionRolePolicy`
   adjunta) antes de correr `03-iam-roles.sh`.
 - Los certificados TLS de laboratorio del broker ya generados (ver
-  `../../START.md` §0 — `./broker/rabbitmq/generate-lab-certs.sh` si hace
+  `../../START.md` §0 — `../broker/rabbitmq/generate-lab-certs.sh` si hace
   falta): `05-build-push-core-images.sh` los necesita para construir
   `rabbitmq-custom` y para hornear el CA cert en `nmap-service`.
 

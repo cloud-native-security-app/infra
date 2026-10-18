@@ -9,7 +9,7 @@ Guía de arranque para los 5 servicios (`broker`, `user-service`, `nmap-service`
 - Certificados TLS de laboratorio del broker ya generados. Si
   `broker/rabbitmq/tls/` no existe o está vacío:
   ```bash
-  ./broker/rabbitmq/generate-lab-certs.sh
+  ../broker/rabbitmq/generate-lab-certs.sh
   ```
   (Ahora mismo ya existen en este checkout — no hace falta correrlo salvo que
   se borren o se clone el repo en otra máquina.)

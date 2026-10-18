@@ -63,7 +63,7 @@ entre documentos — es el único que hace falta seguir para el deploy.
 - **Certificados TLS de laboratorio del broker ya generados** (`START.md`
   §0): si `broker/rabbitmq/tls/` no existe o está vacío, correr
   ```bash
-  ./broker/rabbitmq/generate-lab-certs.sh
+  ../broker/rabbitmq/generate-lab-certs.sh
   ```
   Se hornean en la imagen `rabbitmq-custom` (paso 2) y en `nmap-service`
   (paso 2.2) — sin esto, ninguna de las dos imágenes se puede construir.
@@ -137,23 +137,23 @@ tag + push exactos con tu Account ID y región ya rellenados. En orden:
 
 ```bash
 # user-service
-docker build -t security-app/user-service ./user-service
+docker build -t security-app/user-service ../user-service
 docker tag security-app/user-service:latest 831984817561.dkr.ecr.us-east-1.amazonaws.com/security-app/user-service:latest
 3
 
 # nmap-service (--build-context le da acceso al CA cert de broker/rabbitmq/tls/
 # sin copiarlo — ver nmap-service/Dockerfile)
-docker build --build-context tls=./broker/rabbitmq/tls -t security-app/nmap-service ./nmap-service
+docker build --build-context tls=../broker/rabbitmq/tls -t security-app/nmap-service ../nmap-service
 docker tag security-app/nmap-service:latest 831984817561.dkr.ecr.us-east-1.amazonaws.com/security-app/nmap-service:latest
 docker push 831984817561.dkr.ecr.us-east-1.amazonaws.com/security-app/nmap-service:latest
 
 # gateway
-docker build -t security-app/gateway ./gateway
+docker build -t security-app/gateway ../gateway
 docker tag security-app/gateway:latest 831984817561.dkr.ecr.us-east-1.amazonaws.com/security-app/gateway:latest
 docker push 831984817561.dkr.ecr.us-east-1.amazonaws.com/security-app/gateway:latest
 
 # rabbitmq-custom
-docker build -t security-app/rabbitmq-custom ./broker/rabbitmq
+docker build -t security-app/rabbitmq-custom ../broker/rabbitmq
 docker tag security-app/rabbitmq-custom:latest 831984817561.dkr.ecr.us-east-1.amazonaws.com/security-app/rabbitmq-custom:latest
 docker push 831984817561.dkr.ecr.us-east-1.amazonaws.com/security-app/rabbitmq-custom:latest
 ```
@@ -343,7 +343,7 @@ Google muestra un popup con el **Client ID** y el **Client secret** — cópialo
 
 ```bash
 cd security-app
-docker build --build-arg VITE_GATEWAY_BASE_URL="https://<ALB_DNS>:8080" -t security-app/front ./front
+docker build --build-arg VITE_GATEWAY_BASE_URL="https://<ALB_DNS>:8080" -t security-app/front ../front
 docker tag security-app/front:latest <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/security-app/front:latest
 docker push <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/security-app/front:latest
 ```

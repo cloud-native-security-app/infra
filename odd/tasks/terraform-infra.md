@@ -1,7 +1,7 @@
 # Feature: terraform-infra
 
 Master plan: `infra` : `odd/tasks/cloud-native-deploy.md` (Engram `odd/cloud-native-deploy/tasks`).
-Engram topic for this doc: `odd/terraform-infra/tasks` (project: infra). Branch: `v1`.
+Engram topic for this doc: `odd/terraform-infra/tasks` (project: infra). Branch: `feature/compose_paths` (TF-01).
 
 ## Objective
 
@@ -33,7 +33,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 | ID | Task | Replaces (in `deploy/aws/`) | Done |
 |---|---|---|---|
-| TF-01 | Fix compose build paths to `../<svc>` in `docker-compose.yml`; remove `REPO_ROOT` assumptions (`cd "$REPO_ROOT"` in `05`, `07`, `17`; definition in `00-env.sh`) | `00-env.sh`, `05`, `07`, `17` | [ ] |
+| TF-01 | Fix compose build paths to `../<svc>` in `docker-compose.yml`; remove `REPO_ROOT` assumptions (`cd "$REPO_ROOT"` in `05`, `07`, `17`; definition in `00-env.sh`) | `00-env.sh`, `05`, `07`, `17` | [x] |
 | TF-02 | Terraform skeleton: providers, `variables.tf` (region, project, `desired_count`), locals matching `00-env.sh` names | `00-env.sh` | [ ] |
 | TF-03 | S3 backend for remote state | `.state/*.txt` | [ ] |
 | TF-04 | Data sources: default VPC and subnets | `04-network.sh` (subnet_ids) | [ ] |
@@ -65,4 +65,15 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: planned (docs only). 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). Next: complete master Phase 1 spikes (including MSG-02), then TF-01 and TF-02.
+Status: TF-01 done (compose and scripts use sibling repos). 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). Next: TF-02 (Terraform skeleton) and TF-03 (S3 backend; Phase 1 spikes passed 2026-10-17, S3 native locking still to verify on first `terraform init`).
+
+## TF-01 evidence
+
+- Route: delegated writer (bounded), TDD Strict, runner `make verify` (`scripts/check-paths.sh` + `bash -n`; shellcheck not installed).
+- RED: `make verify` exit 2 before the fix, 21 FAIL lines (compose contexts and bind mounts missing under `infra/`, `REPO_ROOT` still referenced, scripts without `SERVICES_ROOT`).
+- GREEN: `make verify` prints `check-paths: OK` and `bash -n: OK`; `docker compose config --quiet` exit 0.
+- Change: compose paths now `../<svc>`; `SERVICES_ROOT` (default: 3 levels above `00-env.sh`, env-overridable) replaces `REPO_ROOT`; docs paths fixed.
+- Commit: 4d2c270.
+
+- Native review (RDD): risk high, consent granted, 4 lenses (risk, resilience, readability, reliability), no blocking findings; approved and acknowledged 2026-10-17 (lineage `review-85e5427206d4516a`, authority burned). Reviewed boundary advances to `eece9a4`.
+- Delivery: branch `feature/compose_paths` pushed to origin; merge into `develop` is the user's decision.

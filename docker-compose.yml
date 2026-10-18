@@ -8,9 +8,9 @@ services:
       - "5671:5671"   # AMQPS (TLS, cert autofirmado de laboratorio)
       - "15672:15672" # UI de management
     volumes:
-      - ./broker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
-      - ./broker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./broker/rabbitmq/tls:/etc/rabbitmq/tls:ro
+      - ../broker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ../broker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ../broker/rabbitmq/tls:/etc/rabbitmq/tls:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 5s
@@ -44,7 +44,7 @@ services:
   # --- Servicios de la plataforma ---------------------------------------
 
   user-service:
-    build: ./user-service
+    build: ../user-service
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,14 +62,14 @@ services:
 
   nmap-service:
     build:
-      context: ./nmap-service
+      context: ../nmap-service
       # Contexto adicional (BuildKit) para que el Dockerfile pueda alcanzar
       # el CA de laboratorio del broker sin salirse de su contexto normal
-      # (./nmap-service) ni requerir copiarlo/duplicarlo a mano — ver
+      # (../nmap-service) ni requerir copiarlo/duplicarlo a mano — ver
       # `COPY --from=tls ...` en nmap-service/Dockerfile. El mismo mecanismo
       # se usa en deploy/aws/ vía `docker build --build-context tls=...`.
       additional_contexts:
-        tls: ./broker/rabbitmq/tls
+        tls: ../broker/rabbitmq/tls
     depends_on:
       mongo:
         condition: service_healthy
@@ -94,10 +94,10 @@ services:
       MS_NMAP_SSH_COMMAND_TIMEOUT_SECS: "300"
       MS_NMAP_NVD_ENRICHMENT_ENABLED: "false"
     volumes:
-      - ./broker/rabbitmq/tls/ca_certificate.pem:/etc/rabbitmq-tls/ca_certificate.pem:ro
+      - ../broker/rabbitmq/tls/ca_certificate.pem:/etc/rabbitmq-tls/ca_certificate.pem:ro
 
   gateway:
-    build: ./gateway
+    build: ../gateway
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -132,7 +132,7 @@ services:
 
   front:
     build:
-      context: ./front
+      context: ../front
       args:
         # URL vista desde el NAVEGADOR del host (no el nombre de servicio
         # Docker `gateway`) — se hornea en el JS en build-time y parametriza
