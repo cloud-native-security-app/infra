@@ -65,7 +65,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 done (compose and scripts use sibling repos). 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). Next: TF-02 (Terraform skeleton) and TF-03 (S3 backend; gated by master Phase 1 spikes).
+Status: TF-01 done (compose and scripts use sibling repos). 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). Next: TF-02 (Terraform skeleton) and TF-03 (S3 backend; Phase 1 spikes passed 2026-10-17, S3 native locking still to verify on first `terraform init`).
 
 ## TF-01 evidence
 
@@ -74,3 +74,6 @@ Status: TF-01 done (compose and scripts use sibling repos). 2026-10-17: TF-10 re
 - GREEN: `make verify` prints `check-paths: OK` and `bash -n: OK`; `docker compose config --quiet` exit 0.
 - Change: compose paths now `../<svc>`; `SERVICES_ROOT` (default: 3 levels above `00-env.sh`, env-overridable) replaces `REPO_ROOT`; docs paths fixed.
 - Commit: 4d2c270.
+
+- Native review (RDD): risk high, consent granted, 4 lenses (risk, resilience, readability, reliability), no blocking findings; approved and acknowledged 2026-10-17 (lineage `review-85e5427206d4516a`, authority burned). Reviewed boundary advances to `eece9a4`.
+- Delivery: branch `feature/compose_paths` pushed to origin; merge into `develop` is the user's decision.
