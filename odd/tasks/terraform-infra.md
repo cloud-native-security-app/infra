@@ -150,3 +150,4 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - GREEN: `make verify` exit 0; `terraform test` 10 passed.
 - Change: `terraform/iam.tf` (`data "aws_iam_role" "lab"` by `local.lab_role_name`) and output `lab_role_arn`. No role is created.
 - Live (2026-10-18): read-only `terraform plan -lock=false` resolved `lab_role_arn = arn:aws:iam::<account_id>:role/LabRole` (iam:GetRole is allowed); still `Plan: 11 to add` (the TF-05 SGs). Nothing was applied.
+- Commit: 06ac77f (code, tests and this doc). Review assess: medium, `under_budget` (no review due).
