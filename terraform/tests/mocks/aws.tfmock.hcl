@@ -38,3 +38,28 @@ mock_data "aws_caller_identity" {
     account_id = "123456789012"
   }
 }
+
+mock_resource "aws_ecs_cluster" {
+  defaults = {
+    arn = "arn:aws:ecs:us-east-1:123456789012:cluster/security-app-cluster-v2"
+    id  = "arn:aws:ecs:us-east-1:123456789012:cluster/security-app-cluster-v2"
+  }
+}
+
+mock_resource "aws_ecs_task_definition" {
+  defaults = {
+    arn = "arn:aws:ecs:us-east-1:123456789012:task-definition/mock:1"
+  }
+}
+
+mock_resource "aws_ssm_parameter" {
+  defaults = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/mock"
+  }
+}
+
+mock_data "aws_iam_role" {
+  defaults = {
+    arn = "arn:aws:iam::123456789012:role/LabRole"
+  }
+}
