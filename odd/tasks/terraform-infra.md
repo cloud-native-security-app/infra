@@ -45,7 +45,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [x] |
 | TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`, created beforehand by `scripts/bootstrap-namespace.sh`, ARN passed as `var.namespace_arn`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [x] |
 | TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [x] |
-| TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [ ] |
+| TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [x] |
 | TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [ ] |
 | TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [ ] |
 | TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [ ] |
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-10 done (live plans verified 2026-10-18/19). Next: TF-11 (postgres and mongo services).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-11 done (live plans verified 2026-10-18/19). Next: TF-12 (app services).
 
 ## TF-01 evidence
 
@@ -205,3 +205,15 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Not done: SNS server-side encryption (needs KMS; Q4 chose SSE-SQS only).
 - Commit: 5fa5b7a. Review: medium, `under_budget`; offered under the user policy (TF-10 is security-relevant) and declined by the user.
 - Live (2026-10-19): the first plan failed with `ExpiredToken`; after a credential refresh, the read-only `terraform plan -lock=false` showed `Plan: 60 to add` (24 messaging resources: 3 topics, 3 topic policies, 6 queues, 6 queue policies, 3 redrive-allow policies, 3 subscriptions) and `data.aws_caller_identity` resolved. Nothing was applied.
+
+## TF-11 evidence
+
+- Route: direct inline (one resource file `data_services.tf`, its test, mocks, provider pin). TDD Strict, runner `make verify`. Branch `feature/data_services`.
+- Decision (user, 2026-10-19): the hardcoded `POSTGRES_PASSWORD=devpassword` is replaced by `random_password.postgres` (32 chars, no special characters so it is URL-safe) stored in the SSM SecureString `/security-app/postgres/password` and injected through the container `secrets`. The value also lives in the encrypted S3 state.
+- RED: `terraform test` failed on the new `tests/data_services.tftest.hcl` (undeclared resources; 30 passed, 1 failed, 4 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 35 passed.
+- Change: `aws_ecs_task_definition.data` and `aws_ecs_service.data` for postgres and mongo (Fargate awsvpc 256/512, LabRole execution role, public ECR mirror images, legacy health checks, awslogs to the TF-09 log groups; services in the internal SG with a public IP, Service Connect aliases `postgres:5432` and `mongo:27017`, `desired_count = var.desired_count`).
+- Deviation: container definitions are built with `jsonencode` in HCL instead of `templatefile()` over `task-defs/*.json`; the JSON files stay until TF-17.
+- Provider: `hashicorp/random ~> 3.0` (locked 3.9.1 for the 4 platforms). Shared mocks gained `aws_ecs_cluster`, `aws_ecs_task_definition`, `aws_ssm_parameter` and `data.aws_iam_role` ARN defaults.
+- Follow-up for TF-12: `task-defs/user-service.json` still uses `devpassword`; user-service must read `/security-app/postgres/password`.
+- Live (2026-10-19): read-only `terraform plan -lock=false` showed `Plan: 66 to add` (60 earlier plus 2 task definitions, 2 services, the SSM parameter and the random password). Nothing was applied.
