@@ -86,7 +86,8 @@ if [ "$FAILED" -gt 0 ]; then
 
 If something failed, check in this order:
 1. aws ecs describe-services --cluster $CLUSTER --services <svc> --query 'services[0].events'
-2. aws logs tail /ecs/security-app/<svc> --follow
+2. aws logs filter-log-events --log-group-name /ecs/security-app/<svc> --query 'events[-20:].message' --output text
+   (aws-cli v1 has no `logs tail`)
    - user-service: "DatabaseConnectionFailed" is a boot race with postgres; ECS retries on its own
    - gateway and nmap-service cannot process scans until MSG-GW / MSG-NM (SNS/SQS messaging) land;
      they may restart or stay unhealthy until then
