@@ -44,7 +44,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [x] |
 | TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [x] |
 | TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`, created beforehand by `scripts/bootstrap-namespace.sh`, ARN passed as `var.namespace_arn`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [x] |
-| TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [ ] |
+| TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [x] |
 | TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [ ] |
 | TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [ ] |
 | TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [ ] |
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-09 done (live plans verified 2026-10-18). Next: TF-10 (SNS/SQS messaging).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-10 done (live plans verified 2026-10-18/19). Next: TF-11 (postgres and mongo services).
 
 ## TF-01 evidence
 
@@ -203,4 +203,5 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Timeouts and retention: requests visibility = `ssh_connect_timeout_secs` (10) + `ssh_command_timeout_secs` (900) + 60 = 970 s (Q1; new variables, defaults from `task-defs/nmap-service.json`, validated against the 12 h SQS limit); requests retention 1 h and its DLQ 24 h (Q4); other queues 4 days and DLQs 14 days; cancellations and outcomes visibility 30 s.
 - Outputs: `sns_topic_arns`, `sqs_queue_urls`, `sqs_dlq_urls` (maps by name).
 - Not done: SNS server-side encryption (needs KMS; Q4 chose SSE-SQS only).
-- Live: pending. The read-only plan failed with `ExpiredToken` (Learner Lab credentials expired).
+- Commit: 5fa5b7a. Review: medium, `under_budget`; offered under the user policy (TF-10 is security-relevant) and declined by the user.
+- Live (2026-10-19): the first plan failed with `ExpiredToken`; after a credential refresh, the read-only `terraform plan -lock=false` showed `Plan: 60 to add` (24 messaging resources: 3 topics, 3 topic policies, 6 queues, 6 queue policies, 3 redrive-allow policies, 3 subscriptions) and `data.aws_caller_identity` resolved. Nothing was applied.
