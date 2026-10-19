@@ -55,3 +55,14 @@ terraform apply                        # resume
 ```
 
 The app services depend on the postgres and mongo services, so Terraform updates the data tier first. Data lives in ephemeral task storage, so a resumed stack starts with empty databases. The ALB, SQS, SNS and SSM resources stay up while paused.
+
+## GitHub Actions credentials
+
+The service repos deploy with the temporary Learner Lab credentials (the lab cannot create the IAM role GitHub OIDC needs). After each lab start, copy them into GitHub:
+
+```sh
+scripts/refresh-gh-secrets.sh --dry-run   # validate and list targets
+scripts/refresh-gh-secrets.sh
+```
+
+It reads the `learnerlab` profile, checks it with `sts get-caller-identity` (an expired session aborts before any write), and sets the secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and the variable `AWS_REGION` on `cloud-native-security-app/{user-service,nmap-service,gateway,front}`. Values reach `gh` on stdin and are never printed. Override with `AWS_PROFILE`, `AWS_REGION`, `GH_OWNER`, `REPOS`. `make verify` tests it with `scripts/test-refresh-gh-secrets.sh` against fake `aws` and `gh` binaries.

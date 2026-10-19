@@ -239,3 +239,13 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: app services now also `depends_on` the data services, so Terraform updates postgres and mongo before their clients (the tier order of `21-resume.sh`). README gains "Pause and resume" (`terraform apply -var desired_count=0` / `terraform apply`; databases start empty; ALB, SQS, SNS and SSM stay up). No `wait_for_steady_state`: gateway and nmap-service cannot become healthy until MSG-GW/MSG-NM land, so a wait would hang the apply.
 - GREEN: `make verify` exit 0; `terraform test` 47 passed.
 - Live (2026-10-19): read-only `terraform plan -lock=false -var desired_count=0` showed all six services with `desired_count = 0` (`Plan: 81 to add`). Nothing was applied.
+
+## TF-14 evidence
+
+- Route: direct inline (one script plus its offline test, Makefile wiring, README). TDD Strict, runner `make verify`. Branch `feature/gh_secrets`.
+- RED: `scripts/test-refresh-gh-secrets.sh` failed on every case (script missing, exit 127).
+- GREEN: `make verify` exit 0 (`test-refresh-gh-secrets: OK`, shellcheck clean, `terraform test` 47 passed).
+- Change: `scripts/refresh-gh-secrets.sh` reads the `learnerlab` profile, validates it with `sts get-caller-identity` before any write (an expired session aborts and asks for a refresh), requires a session token (refuses non-lab credentials), requires `gh auth status`, then sets secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and variable `AWS_REGION` on the 4 service repos. Values go to `gh` on stdin (never argv) and are never printed. `--dry-run`; overrides `AWS_PROFILE`, `AWS_REGION`, `GH_OWNER`, `REPOS`.
+- Tests (fake `aws` and `gh`): happy path (12 secrets + 4 variables, values only on stdin, nothing printed), expired credentials, missing session token, unauthenticated gh, overrides, dry run.
+- Not included: the `infra` repo itself (no Terraform CI yet).
+- Live: pending (needs the user's authorization to write secrets to GitHub).
