@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Asserts that compose and deploy scripts find the service repos as siblings
-# of infra. Offline: runs no AWS command and sources no deploy script.
+# Asserts that compose and push-images.sh find the service repos as siblings
+# of infra. Offline: runs no AWS command.
 set -euo pipefail
 
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICES_ROOT="${SERVICES_ROOT:-$(cd "$INFRA_DIR/.." && pwd)}"
 COMPOSE_FILE="$INFRA_DIR/docker-compose.yml"
-SCRIPTS_DIR="$INFRA_DIR/deploy/aws"
-BUILD_SCRIPTS=(05-build-push-core-images.sh 07-build-push-front-image.sh 17-rebuild-front-https.sh)
 SERVICE_DIRS=(user-service nmap-service gateway front broker/rabbitmq)
 
 fail=0
@@ -38,21 +36,15 @@ else
   done < <(rg -o --no-line-number '(?:context:|build:|tls:|^\s*-)\s*"?(\.{1,2}/[^:"\s]+)' -r '$1' "$COMPOSE_FILE")
 fi
 
-# (b) no REPO_ROOT left in the deploy scripts.
-if rg -n 'REPO_ROOT' "$SCRIPTS_DIR" --glob '*.sh' >&2; then
-  err "REPO_ROOT is still referenced under deploy/aws/"
+# (b) push-images.sh resolves the service repos through SERVICES_ROOT, not the cwd.
+rg -q 'SERVICES_ROOT="\$\{SERVICES_ROOT:-' "$INFRA_DIR/scripts/push-images.sh" || err "push-images.sh does not define SERVICES_ROOT overridable via env"
+if rg -n '^\s*cd |\s\./(user-service|nmap-service|gateway|front|broker)' "$INFRA_DIR/scripts/push-images.sh" >&2; then
+  err "push-images.sh still uses cwd-relative service paths"
 fi
 
-# (c) build scripts use SERVICES_ROOT and the sibling repos exist.
+# (c) the sibling service repos exist.
 for d in "${SERVICE_DIRS[@]}"; do
   [ -d "$SERVICES_ROOT/$d" ] || err "sibling repo dir '$SERVICES_ROOT/$d' not found"
-done
-rg -q '^export SERVICES_ROOT="\$\{SERVICES_ROOT:-' "$SCRIPTS_DIR/00-env.sh" || err "00-env.sh does not define SERVICES_ROOT overridable via env"
-for s in "${BUILD_SCRIPTS[@]}"; do
-  rg -q 'SERVICES_ROOT' "$SCRIPTS_DIR/$s" || err "$s does not use SERVICES_ROOT"
-  if rg -n '^\s*cd |\s\./(user-service|nmap-service|gateway|front|broker)' "$SCRIPTS_DIR/$s" >&2; then
-    err "$s still uses cwd-relative service paths"
-  fi
 done
 
 if [ "$fail" -eq 0 ]; then echo "check-paths: OK"; fi

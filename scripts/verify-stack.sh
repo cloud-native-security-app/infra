@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke-checks the deployed stack: gateway and front over HTTPS through the ALB, and the
-# ECS services (running == desired, ACTIVE). Replaces deploy/aws/14-verify.sh.
+# ECS services (running == desired, ACTIVE). Replaces the former 14-verify.sh.
 #
 # Usage: scripts/verify-stack.sh
 #   env: AWS_PROFILE (default learnerlab), AWS_REGION (default us-east-1)

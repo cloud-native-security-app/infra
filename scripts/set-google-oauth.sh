@@ -5,7 +5,7 @@
 #
 # Usage: GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh [--dry-run]
 #   Without the env vars it reads OAUTH_FILE (default deploy/aws/.state/google_oauth.env,
-#   written by the legacy scripts).
+#   a local untracked file left by the retired imperative scripts).
 #   env: PROJECT (default security-app), AWS_PROFILE (default learnerlab),
 #        AWS_REGION (default us-east-1), CLUSTER (default ${PROJECT}-cluster-v2)
 #   --dry-run: validate inputs and credentials, write nothing.

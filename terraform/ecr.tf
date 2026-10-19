@@ -1,10 +1,10 @@
-# Mirrors deploy/aws/02-ecr-repos.sh without rabbitmq-custom (SNS/SQS replace RabbitMQ).
+# Replaces the former 02-ecr-repos.sh, without rabbitmq-custom (SNS/SQS replace RabbitMQ).
 # postgres and mongo use public mirrors, so they have no repo here.
 resource "aws_ecr_repository" "app" {
   for_each = local.ecr_repositories
 
   name = each.value
-  # MUTABLE while deploy/aws still pushes :latest; revisit once CI pushes SHA tags.
+  # MUTABLE while scripts/push-images.sh pushes :latest; revisit once CI pushes SHA tags.
   image_tag_mutability = "MUTABLE"
   # Lab stack: images are rebuildable, so destroy must not get stuck on them.
   force_delete = true

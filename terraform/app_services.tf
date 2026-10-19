@@ -1,5 +1,4 @@
-# Mirrors task-defs/{user-service,nmap-service,gateway,front}.json and the scripts
-# 11-deploy-tier1-services.sh, 12-deploy-tier2-gateway.sh and 13-deploy-front.sh.
+# Replaces the former task-defs JSON and tier1/tier2/front deploy scripts for the four app services.
 # Terraform only creates the services with a complete bootstrap task definition so the
 # stack runs before any CI exists; each service repo's CI registers later revisions, so
 # the services ignore task_definition changes. CI task definitions must reference the

@@ -1,4 +1,4 @@
-# Default VPC and its default-for-az subnets (replaces the lookup in deploy/aws/04-network.sh).
+# Default VPC and its default-for-az subnets.
 # All default subnets are public (MapPublicIpOnLaunch=true).
 data "aws_vpc" "default" {
   default = true

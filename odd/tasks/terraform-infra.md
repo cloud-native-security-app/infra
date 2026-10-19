@@ -51,7 +51,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [x] |
 | TF-15 | Outputs: `alb_dns`, `gateway_public_url`, `front_public_url`, `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn`, queue URLs | `.state/gateway_public_url.txt`, `14-verify.sh` | [x] |
 | TF-16 | OAuth secrets for gateway delivered via SSM/Secrets Manager (spike 6) instead of `.state/google_oauth.env` | `16-update-gateway-oauth.sh` | [x] |
-| TF-17 | Retire legacy `deploy/aws/` scripts after parity (keep `14-verify.sh` logic as a check) | all, `99-cleanup.sh` -> `terraform destroy` | [ ] |
+| TF-17 | Retire legacy `deploy/aws/` scripts after parity (keep `14-verify.sh` logic as a check) | all, `99-cleanup.sh` -> `terraform destroy` | [x] |
 
 ## Acceptance criteria
 
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-16 done (live plans verified 2026-10-18/19). Next: TF-17 part 2, blocked on MSG-GW / MSG-NM (see below).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-16 done (live plans verified 2026-10-18/19). 2026-10-19: TF-17 done (legacy `deploy/aws/` retired). TF-01..TF-17 done.
 
 ## TF-01 evidence
 
@@ -297,3 +297,12 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Keep `deploy/aws/` until the gateway and nmap-service code speaks SNS/SQS (gateway `odd/tasks/sqs-sns-adapter.md` MSG-GW, nmap-service MSG-NM). Today the legacy scripts are the only way to run the whole app (with RabbitMQ).
 - Close TF-17 when `scripts/verify-stack.sh` passes every check against the Terraform stack; then delete `deploy/aws/` and update `START.md` and `deploy/aws/CONSOLE_GUIDE.md`.
 - Do not run the legacy scripts and the Terraform stack at the same time: they use the same resource names.
+
+## TF-17 evidence (part 2)
+
+- Route: delegated writer (offline only; no AWS, apply or docker). Branch `feature/retire_legacy_scripts`. Supersedes the "keep until MSG-GW/MSG-NM" decision above: the gateway and nmap-service moved to SNS/SQS, so the condition was met.
+- Removed: 31 tracked files under `deploy/aws/` via `git rm` (scripts 00-21, 99, `create-test-target-ec2.sh`, `task-defs/*.json`, `README.md`, `CONSOLE_GUIDE.md`). The untracked `deploy/aws/.state/` (local secrets) was kept and stays gitignored.
+- References updated: Makefile (dropped `bash -n deploy/aws/*.sh`), `scripts/check-paths.sh` (compose checks kept; legacy script checks replaced by `push-images.sh` SERVICES_ROOT checks), comments in `push-images.sh`, `verify-stack.sh`, `set-google-oauth.sh`, `docker-compose.yml`, `terraform/*.tf`, `terraform/tests`, `terraform/README.md`. `START.md` now opens with the Terraform flow and the one-time Google OAuth console steps; the docker compose guide is kept as section B.
+- `make verify`: exit 0 (check-paths OK, all script tests OK, `bash -n` OK, terraform tests 52 passed).
+- Live evidence: `scripts/verify-stack.sh` 10/10 on 2026-10-19 after `scripts/push-images.sh gateway nmap-service` and a resume apply.
+- Follow-ups: (1) rework `docker-compose.yml` for LocalStack (SNS/SQS) instead of RabbitMQ; START.md section B still describes RabbitMQ. (2) Decide the rustls provider guard. (3) Optional `stopTimeout >= 30s` on the ECS task definitions. (4) A few test messages still cite legacy script names (`00-env.sh`, `06-alb.sh`) as history.

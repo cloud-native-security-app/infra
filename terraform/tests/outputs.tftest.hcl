@@ -1,4 +1,4 @@
-# Outputs that replace deploy/aws/.state/*.txt and feed CI and the verify check (TF-15).
+# Outputs that replace the former .state/*.txt files and feed CI and the verify check (TF-15).
 mock_provider "aws" {
   source = "./tests/mocks"
 }

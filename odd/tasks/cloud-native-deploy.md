@@ -59,7 +59,7 @@ Ownership rule: Terraform creates ECS services with a **bootstrap task definitio
 
 | ID | Repo | Feature doc (repo + path) | Engram topic | Status |
 |---|---|---|---|---|
-| TF-01..TF-17 | infra | `infra` : `odd/tasks/terraform-infra.md` | `odd/terraform-infra/tasks` | planned |
+| TF-01..TF-17 | infra | `infra` : `odd/tasks/terraform-infra.md` | `odd/terraform-infra/tasks` | done (2026-10-19) |
 | MSG-01..MSG-09 | broker | `broker` : `odd/tasks/sqs-sns-migration.md` | `odd/sqs-sns-migration/tasks` | planned (topology signed off 2026-10-17, MSG-01 done) |
 | MSG-GW-01..MSG-GW-04 | gateway | `gateway` : `odd/tasks/sqs-sns-adapter.md` | `odd/sqs-sns-adapter/tasks` (project: gateway) | planned |
 | MSG-NM-01..MSG-NM-05 | nmap-service | `nmap-service` : `odd/tasks/sqs-sns-adapter.md` | `odd/sqs-sns-adapter/tasks` (project: nmap-service) | planned |
@@ -121,6 +121,7 @@ Phase 1 spikes:
 - [x] Phase 0: master plan and `terraform-infra` doc written.
 - [x] Phase 0: per-repo feature docs and harness migration H1-H5 (all repos on `v1`, verify green). Follow-up: broker needs a GGA-rules `AGENTS.md`.
 - [x] R1 root cleanup: root `.git` and copied files removed; `.state/` moved to `infra/deploy/aws/.state/` (gitignored).
+- [x] 2026-10-19: TF-17 done: legacy `deploy/aws/*` scripts retired (Terraform + `scripts/` replace them); only the untracked `.state/` remains locally.
 - [x] 2026-10-17: spike 1 recorded (Amazon MQ denied; SQS/SNS allowed). User decision: SQS + SNS replaces RabbitMQ. Messaging plans written (`broker` MSG-*, `gateway` and `nmap-service` `sqs-sns-adapter`); TF-10 replaced.
 - [x] Phase 1 (2026-10-17): all spikes recorded; messaging topology signed off.
 - [ ] Phases 2-3.

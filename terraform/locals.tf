@@ -1,4 +1,4 @@
-# Names mirror deploy/aws/00-env.sh so Terraform can adopt the same layout.
+# Names keep the layout of the former imperative scripts.
 locals {
   # "-v2": the original cluster name was locked by CreateCluster idempotency in 00-env.sh.
   cluster_name     = "${var.project}-cluster-v2"

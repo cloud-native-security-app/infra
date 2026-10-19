@@ -26,7 +26,7 @@ run "four_app_repositories" {
   }
   assert {
     condition     = alltrue([for r in aws_ecr_repository.app : r.image_tag_mutability == "MUTABLE"])
-    error_message = "tags stay mutable while deploy/aws pushes :latest"
+    error_message = "tags stay mutable while push-images.sh pushes :latest"
   }
   assert {
     condition     = alltrue([for r in aws_ecr_repository.app : r.force_delete])

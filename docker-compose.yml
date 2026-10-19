@@ -67,7 +67,7 @@ services:
       # el CA de laboratorio del broker sin salirse de su contexto normal
       # (../nmap-service) ni requerir copiarlo/duplicarlo a mano — ver
       # `COPY --from=tls ...` en nmap-service/Dockerfile. El mismo mecanismo
-      # se usa en deploy/aws/ vía `docker build --build-context tls=...`.
+      # se usa en scripts/push-images.sh (`--build-context tls=...`).
       additional_contexts:
         tls: ../broker/rabbitmq/tls
     depends_on:
