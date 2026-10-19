@@ -30,3 +30,27 @@ variable "namespace_arn" {
     error_message = "namespace_arn must be a Cloud Map namespace ARN; run scripts/bootstrap-namespace.sh and export TF_VAR_namespace_arn."
   }
 }
+
+# nmap-service SSH timeouts (MS_NMAP_SSH_*_TIMEOUT_SECS); they also size the requests visibility timeout.
+variable "ssh_connect_timeout_secs" {
+  description = "nmap-service SSH connect timeout in seconds."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.ssh_connect_timeout_secs > 0
+    error_message = "ssh_connect_timeout_secs must be positive."
+  }
+}
+
+variable "ssh_command_timeout_secs" {
+  description = "nmap-service remote nmap command timeout in seconds."
+  type        = number
+  default     = 900
+
+  validation {
+    # SQS caps the visibility timeout at 12 hours.
+    condition     = var.ssh_command_timeout_secs > 0 && var.ssh_connect_timeout_secs + var.ssh_command_timeout_secs + 60 <= 43200
+    error_message = "ssh_command_timeout_secs must be positive and keep connect + command + 60 within the 12-hour SQS visibility limit."
+  }
+}

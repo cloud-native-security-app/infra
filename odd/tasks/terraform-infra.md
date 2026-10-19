@@ -44,7 +44,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [x] |
 | TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [x] |
 | TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`, created beforehand by `scripts/bootstrap-namespace.sh`, ARN passed as `var.namespace_arn`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [x] |
-| TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [ ] |
+| TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [x] |
 | TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [ ] |
 | TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [ ] |
 | TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [ ] |
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-09 done (live plans verified 2026-10-18). Next: TF-10 (SNS/SQS messaging).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-10 done (live plans verified 2026-10-18/19). Next: TF-11 (postgres and mongo services).
 
 ## TF-01 evidence
 
@@ -192,3 +192,16 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Correction: the data source was replaced by the required variable `namespace_arn` (validated as a Cloud Map namespace ARN), fed with `export TF_VAR_namespace_arn="$(scripts/bootstrap-namespace.sh | tail -1)"`. The shared `mock_data` was removed; every test file sets `namespace_arn` in a `variables` block; `ecs.tftest.hcl` adds an invalid-ARN `expect_failures` run. RED: 0 passed, 7 failed (invalid mocked ARN, variable undeclared). GREEN: `make verify` exit 0, `terraform test` 23 passed.
 - Live plan after the correction: `Plan: 36 to add, 0 to change, 0 to destroy` with `namespace_arn` resolved. Nothing was applied.
 - Open risk: `ecs:CreateCluster` with an existing namespace ARN might need extra `servicediscovery` permissions for the caller; only the first `apply` can prove it.
+
+## TF-10 evidence
+
+- Route: direct inline (one resource file `messaging.tf`, its test, mocks, variables, outputs). TDD Strict, runner `make verify`. Branch `feature/messaging`.
+- Contract: broker `odd/tasks/sqs-sns-migration.md`, MSG-01 table and Q1-Q8 (signed off 2026-10-17).
+- RED: `terraform test` failed on the new `tests/messaging.tftest.hcl` (undeclared resources; 23 passed, 1 failed, 6 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 30 passed.
+- Change: SNS topics `scan-requests`, `scan-cancellations`, `scan-outcomes` with a topic policy (account access, deny non-TLS). SQS queues `ms-nmap-scan-requests`, `ms-nmap-scan-cancellations`, `gateway-scan-outcomes`, each with a `<name>-dlq`: standard, SSE-SQS, long polling 20 s, `maxReceiveCount = 3`, `RedriveAllowPolicy` byQueue (separate resource to avoid a cycle). Queue policies allow `sqs:SendMessage` only from `sns.amazonaws.com` with `aws:SourceArn` = the subscribed topic, and deny non-TLS; DLQ policies only deny non-TLS. Raw-delivery subscriptions; the gateway filter is `{"routing_key":[{"prefix":"scan.outcome."}]}`. `ms-analisis` queues deferred (Q7).
+- Timeouts and retention: requests visibility = `ssh_connect_timeout_secs` (10) + `ssh_command_timeout_secs` (900) + 60 = 970 s (Q1; new variables, defaults from `task-defs/nmap-service.json`, validated against the 12 h SQS limit); requests retention 1 h and its DLQ 24 h (Q4); other queues 4 days and DLQs 14 days; cancellations and outcomes visibility 30 s.
+- Outputs: `sns_topic_arns`, `sqs_queue_urls`, `sqs_dlq_urls` (maps by name).
+- Not done: SNS server-side encryption (needs KMS; Q4 chose SSE-SQS only).
+- Commit: 5fa5b7a. Review: medium, `under_budget`; offered under the user policy (TF-10 is security-relevant) and declined by the user.
+- Live (2026-10-19): the first plan failed with `ExpiredToken`; after a credential refresh, the read-only `terraform plan -lock=false` showed `Plan: 60 to add` (24 messaging resources: 3 topics, 3 topic policies, 6 queues, 6 queue policies, 3 redrive-allow policies, 3 subscriptions) and `data.aws_caller_identity` resolved. Nothing was applied.

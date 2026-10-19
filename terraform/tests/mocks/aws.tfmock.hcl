@@ -19,3 +19,22 @@ mock_resource "aws_acm_certificate" {
   }
 }
 
+
+mock_resource "aws_sns_topic" {
+  defaults = {
+    arn = "arn:aws:sns:us-east-1:123456789012:mock-topic"
+  }
+}
+
+mock_resource "aws_sqs_queue" {
+  defaults = {
+    arn = "arn:aws:sqs:us-east-1:123456789012:mock-queue"
+    id  = "https://sqs.us-east-1.amazonaws.com/123456789012/mock-queue"
+  }
+}
+
+mock_data "aws_caller_identity" {
+  defaults = {
+    account_id = "123456789012"
+  }
+}

@@ -122,3 +122,18 @@ output "log_group_names" {
   description = "CloudWatch log group names by service."
   value       = { for name, group in aws_cloudwatch_log_group.service : name => group.name }
 }
+
+output "sns_topic_arns" {
+  description = "SNS topic ARNs by name (scan-requests, scan-cancellations, scan-outcomes)."
+  value       = { for name, topic in aws_sns_topic.scan : name => topic.arn }
+}
+
+output "sqs_queue_urls" {
+  description = "Consumer SQS queue URLs by name."
+  value       = { for name, queue in aws_sqs_queue.consumer : name => queue.id }
+}
+
+output "sqs_dlq_urls" {
+  description = "DLQ URLs by consumer queue name (for explicit poison-message sends)."
+  value       = { for name, queue in aws_sqs_queue.dlq : name => queue.id }
+}
