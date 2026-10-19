@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-16 done (live plans verified 2026-10-18/19). Next: TF-17 (retire legacy scripts).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-16 done (live plans verified 2026-10-18/19). Next: TF-17 part 2, blocked on MSG-GW / MSG-NM (see below).
 
 ## TF-01 evidence
 
@@ -280,3 +280,20 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: `push-images.sh` (replaces 05, 07, 17) reads `ecr_repository_urls`, `gateway_public_url`, `cluster_name` from `terraform output -json`, validates credentials with STS, logs in to ECR with the password on stdin only, builds and pushes `:latest` for all four services or a subset, passes `VITE_GATEWAY_BASE_URL` to front and the `tls` build context to nmap-service only if `broker/rabbitmq/tls` exists (drop with MSG-NM), then forces an ECS redeploy (`--no-redeploy` skips; `--dry-run` runs no docker or mutation). `verify-stack.sh` (replaces 14-verify.sh) checks gateway `/health` 200, `/api/openapi.json` 200, `/auth/login` 302, front `/` 200 (`curl -sk`, self-signed ALB certificate) and every service from `service_names` (ACTIVE, running == desired), printing `[OK]`/`[FAIL]` lines and exiting 1 on any failure. README gains "End-to-end deploy".
 - Live: pending (needs the first apply).
 - Commit: 4e313fa. Parent re-ran `make verify` (exit 0, 51 passed, all 6 script tests OK). Review: high; declined under the user policy (only TF-10/14/16 are offered).
+
+## First live apply (2026-10-19)
+
+- Authorized by the user. The classifier blocked the agent's `terraform apply`, so the user ran it in their own terminal (plan saved with `-out`, then applied).
+- Result: 80 of 83 resources created (state lists 84 entries with the 4 data sources). The 3 `aws_sns_topic_policy.scan` failed: `SetTopicAttributes ... InvalidParameter: Policy statement action out of service scope!`.
+- Cause: the deny-non-TLS statement used `Action = "sns:*"`; a topic policy only accepts the explicit SNS topic actions. The mocked tests could not see it.
+- Fix (TDD): new run `topic_policies_only_use_actions_sns_accepts` in `tests/messaging.tftest.hcl` (RED: 51 passed, 1 failed on the `sns:*` action), then `local.sns_topic_actions` (Publish, Subscribe, Receive, GetTopicAttributes, SetTopicAttributes, AddPermission, RemovePermission, DeleteTopic, ListSubscriptionsByTopic) used in the deny statement. GREEN: `make verify` exit 0, 52 passed.
+- Live plan after the fix: `Plan: 3 to add, 0 to change, 0 to destroy` (only the 3 topic policies). The user ran the second apply; the next plan reports `No changes` (83 resources, state matches the configuration).
+- `scripts/push-images.sh` (agent, user-authorized): built and pushed the 4 images to ECR with `:latest` and forced a redeploy (exit 0).
+- `scripts/verify-stack.sh`: 5 passed, 5 failed. OK: front HTTPS 200, ECS postgres, mongo, user-service and front 1/1. FAIL: gateway `/health`, `/api/openapi.json`, `/auth/login` and ECS gateway and nmap-service 0/1. Cause (from the logs, expected): the gateway and nmap-service code still needs the RabbitMQ configuration (`falta la variable de entorno requerida: MS_NMAP_BROKER_ENDPOINT`; gateway `no se pudo cargar la configuración`); they start once MSG-GW / MSG-NM land. A first gateway probe timed out (`000`) while the ALB was still settling; a direct probe then returned `503` (no healthy target), as expected. HTTP :80 redirects 301 to HTTPS :443.
+- Fix: the verify-stack hint used `aws logs tail`, which aws-cli v1 lacks; it now suggests `aws logs filter-log-events` (test updated).
+
+## TF-17 part 2 decision (user, 2026-10-19)
+
+- Keep `deploy/aws/` until the gateway and nmap-service code speaks SNS/SQS (gateway `odd/tasks/sqs-sns-adapter.md` MSG-GW, nmap-service MSG-NM). Today the legacy scripts are the only way to run the whole app (with RabbitMQ).
+- Close TF-17 when `scripts/verify-stack.sh` passes every check against the Terraform stack; then delete `deploy/aws/` and update `START.md` and `deploy/aws/CONSOLE_GUIDE.md`.
+- Do not run the legacy scripts and the Terraform stack at the same time: they use the same resource names.

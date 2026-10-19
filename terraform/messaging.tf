@@ -46,6 +46,14 @@ locals {
 
 data "aws_caller_identity" "current" {}
 
+locals {
+  # A topic policy only accepts these actions: no wildcards ("action out of service scope").
+  sns_topic_actions = [
+    "SNS:Publish", "SNS:Subscribe", "SNS:Receive", "SNS:GetTopicAttributes", "SNS:SetTopicAttributes",
+    "SNS:AddPermission", "SNS:RemovePermission", "SNS:DeleteTopic", "SNS:ListSubscriptionsByTopic",
+  ]
+}
+
 resource "aws_sns_topic" "scan" {
   for_each = local.scan_topics
 
@@ -64,10 +72,10 @@ resource "aws_sns_topic_policy" "scan" {
         Sid       = "AccountAccess"
         Effect    = "Allow"
         Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
-        Action    = ["sns:Publish", "sns:Subscribe", "sns:GetTopicAttributes", "sns:SetTopicAttributes", "sns:ListSubscriptionsByTopic"]
+        Action    = ["SNS:Publish", "SNS:Subscribe", "SNS:GetTopicAttributes", "SNS:SetTopicAttributes", "SNS:ListSubscriptionsByTopic"]
         Resource  = each.value.arn
       },
-      merge(local.deny_insecure_transport, { Resource = each.value.arn, Action = "sns:*" }),
+      merge(local.deny_insecure_transport, { Resource = each.value.arn, Action = local.sns_topic_actions }),
     ]
   })
 }

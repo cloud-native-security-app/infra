@@ -106,7 +106,7 @@ run bad FAKE_ECS_BAD=gateway
 [ "$(rc bad)" = 1 ] || err "bad: must exit 1"
 rg -q '^\[FAIL\] .*gateway' "$WORK/bad.out" || err "bad: expected a FAIL line for gateway"
 rg -q '^\[FAIL\] .*front' "$WORK/bad.out" && err "bad: healthy service flagged"
-rg -q -i 'logs tail' "$WORK/bad.out" "$WORK/bad.err" || err "bad: expected troubleshooting hints"
+rg -q -i 'filter-log-events' "$WORK/bad.out" "$WORK/bad.err" || err "bad: expected troubleshooting hints"
 rg -q -i 'rabbit|amqps' "$WORK/bad.out" "$WORK/bad.err" && err "bad: obsolete RabbitMQ hint"
 
 # --- service missing from describe-services
