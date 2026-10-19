@@ -37,6 +37,20 @@ override_resource {
 }
 
 override_resource {
+  target = aws_ssm_parameter.google_oauth["client-id"]
+  values = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-id"
+  }
+}
+
+override_resource {
+  target = aws_ssm_parameter.google_oauth["client-secret"]
+  values = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-secret"
+  }
+}
+
+override_resource {
   target = aws_ssm_parameter.gateway_shared_secret
   values = {
     arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway-shared-secret"
@@ -185,9 +199,11 @@ run "secrets_come_from_the_ssm_parameters" {
       { for s in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].secrets : s.name => s.valueFrom } == {
         MS_USUARIOS_SHARED_SECRET = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway-shared-secret"
         SESSION_SIGNING_KEY       = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/session-signing-key"
+        GOOGLE_CLIENT_ID          = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-id"
+        GOOGLE_CLIENT_SECRET      = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-secret"
       }
     )
-    error_message = "gateway shares the user-service's shared-secret parameter and has its own signing key"
+    error_message = "gateway shares the user-service's shared-secret parameter, has its own signing key, and reads Google OAuth from SSM"
   }
   assert {
     condition = alltrue([for k in ["nmap-service", "front"] :
@@ -215,8 +231,6 @@ run "environment_matches_the_legacy_json" {
       { for e in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].environment : e.name => e.value } == {
         HTTP_HOST                               = "0.0.0.0"
         HTTP_PORT                               = "8080"
-        GOOGLE_CLIENT_ID                        = "dev-placeholder"
-        GOOGLE_CLIENT_SECRET                    = "dev-placeholder"
         GOOGLE_REDIRECT_URI                     = "https://security-app-alb-0.us-east-1.elb.amazonaws.com:8080/auth/callback"
         FRONT_BASE_URL                          = "https://security-app-alb-0.us-east-1.elb.amazonaws.com"
         SESSION_TTL_SECS                        = "3600"
@@ -350,5 +364,26 @@ run "desired_count_zero_pauses_app_services" {
   assert {
     condition     = alltrue([for svc in aws_ecs_service.app : svc.desired_count == 0])
     error_message = "desired_count must drive the application services too"
+  }
+}
+
+run "google_oauth_lives_only_in_ssm" {
+  command = apply
+
+  assert {
+    condition = (
+      aws_ssm_parameter.google_oauth["client-id"].name == "/security-app/gateway/google-client-id" &&
+      aws_ssm_parameter.google_oauth["client-secret"].name == "/security-app/gateway/google-client-secret" &&
+      alltrue([for p in aws_ssm_parameter.google_oauth : p.type == "SecureString"])
+    )
+    error_message = "both Google OAuth values are SSM SecureStrings under /security-app/gateway/"
+  }
+  assert {
+    condition     = alltrue([for p in aws_ssm_parameter.google_oauth : p.value == "unset-run-scripts-set-google-oauth"])
+    error_message = "Terraform only seeds a placeholder; the real values are set by scripts/set-google-oauth.sh"
+  }
+  assert {
+    condition     = length([for e in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].environment : e if startswith(e.name, "GOOGLE_CLIENT_")]) == 0
+    error_message = "no Google OAuth value may be a plain environment variable"
   }
 }

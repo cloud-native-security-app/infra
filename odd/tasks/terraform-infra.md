@@ -50,7 +50,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [x] |
 | TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [x] |
 | TF-15 | Outputs: `alb_dns`, `gateway_public_url`, `front_public_url`, `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn`, queue URLs | `.state/gateway_public_url.txt`, `14-verify.sh` | [x] |
-| TF-16 | OAuth secrets for gateway delivered via SSM/Secrets Manager (spike 6) instead of `.state/google_oauth.env` | `16-update-gateway-oauth.sh` | [ ] |
+| TF-16 | OAuth secrets for gateway delivered via SSM/Secrets Manager (spike 6) instead of `.state/google_oauth.env` | `16-update-gateway-oauth.sh` | [x] |
 | TF-17 | Retire legacy `deploy/aws/` scripts after parity (keep `14-verify.sh` logic as a check) | all, `99-cleanup.sh` -> `terraform destroy` | [ ] |
 
 ## Acceptance criteria
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-15 done (live plans verified 2026-10-18/19). Next: TF-16 (OAuth secrets in SSM).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-16 done (live plans verified 2026-10-18/19). Next: TF-17 (retire legacy scripts).
 
 ## TF-01 evidence
 
@@ -259,3 +259,14 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: outputs `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn` and `service_names` (sorted list of the six ECS services, for the `describe-services` check that replaces `14-verify.sh` in TF-17).
 - GREEN: `make verify` exit 0; `terraform test` 50 passed (one fix in the test itself: list vs tuple comparison needed `tolist`).
 - Live (2026-10-19): read-only `terraform plan -lock=false` lists the new outputs (`Plan: 81 to add`, no new resources). Nothing was applied.
+
+## TF-16 evidence
+
+- Route: direct inline (Terraform change, one script plus its offline test, README). TDD Strict, runner `make verify`. Branch `feature/oauth_ssm`.
+- Decision (user, 2026-10-19, option A): the real Google OAuth client never passes through Terraform. Terraform seeds `aws_ssm_parameter.google_oauth` (`/security-app/gateway/google-client-id`, `/security-app/gateway/google-client-secret`, SecureString) with the placeholder `unset-run-scripts-set-google-oauth` and `ignore_changes = [value]`; `scripts/set-google-oauth.sh` writes the real values.
+- RED: `terraform test` 48 passed, 3 failed (gateway secrets map, env map and the new `google_oauth_lives_only_in_ssm` run); `scripts/test-set-google-oauth.sh` failed (script missing, exit 127).
+- GREEN: `make verify` exit 0; `terraform test` 51 passed; `test-set-google-oauth: OK`; shellcheck clean.
+- Change: gateway task definition reads `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from SSM through `secrets`; the `dev-placeholder` env values are gone. The script takes the values from the environment or the legacy `deploy/aws/.state/google_oauth.env`, validates the `learnerlab` credentials with STS first, puts both parameters through 0600 temp files (`--value file://`, never argv), never prints them, deletes the temp files, then runs `ecs update-service --force-new-deployment` on the gateway. `--dry-run` writes nothing.
+- Replaces `16-update-gateway-oauth.sh` (no more task-definition re-registration with secrets inline).
+- Live (2026-10-19): read-only `terraform plan -lock=false` showed the two parameters (`Plan: 83 to add`). Nothing was applied. A live run of the script needs the applied stack (the gateway service must exist).
+- Commit: 2cb6f2d. Native review (RDD): risk high, offered under the user policy (TF-16) and granted; 4 lenses, 0 findings; approved and acknowledged 2026-10-19 (lineage `review-7bc036da1a158c68`, burned).
