@@ -192,3 +192,15 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Correction: the data source was replaced by the required variable `namespace_arn` (validated as a Cloud Map namespace ARN), fed with `export TF_VAR_namespace_arn="$(scripts/bootstrap-namespace.sh | tail -1)"`. The shared `mock_data` was removed; every test file sets `namespace_arn` in a `variables` block; `ecs.tftest.hcl` adds an invalid-ARN `expect_failures` run. RED: 0 passed, 7 failed (invalid mocked ARN, variable undeclared). GREEN: `make verify` exit 0, `terraform test` 23 passed.
 - Live plan after the correction: `Plan: 36 to add, 0 to change, 0 to destroy` with `namespace_arn` resolved. Nothing was applied.
 - Open risk: `ecs:CreateCluster` with an existing namespace ARN might need extra `servicediscovery` permissions for the caller; only the first `apply` can prove it.
+
+## TF-10 evidence
+
+- Route: direct inline (one resource file `messaging.tf`, its test, mocks, variables, outputs). TDD Strict, runner `make verify`. Branch `feature/messaging`.
+- Contract: broker `odd/tasks/sqs-sns-migration.md`, MSG-01 table and Q1-Q8 (signed off 2026-10-17).
+- RED: `terraform test` failed on the new `tests/messaging.tftest.hcl` (undeclared resources; 23 passed, 1 failed, 6 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 30 passed.
+- Change: SNS topics `scan-requests`, `scan-cancellations`, `scan-outcomes` with a topic policy (account access, deny non-TLS). SQS queues `ms-nmap-scan-requests`, `ms-nmap-scan-cancellations`, `gateway-scan-outcomes`, each with a `<name>-dlq`: standard, SSE-SQS, long polling 20 s, `maxReceiveCount = 3`, `RedriveAllowPolicy` byQueue (separate resource to avoid a cycle). Queue policies allow `sqs:SendMessage` only from `sns.amazonaws.com` with `aws:SourceArn` = the subscribed topic, and deny non-TLS; DLQ policies only deny non-TLS. Raw-delivery subscriptions; the gateway filter is `{"routing_key":[{"prefix":"scan.outcome."}]}`. `ms-analisis` queues deferred (Q7).
+- Timeouts and retention: requests visibility = `ssh_connect_timeout_secs` (10) + `ssh_command_timeout_secs` (900) + 60 = 970 s (Q1; new variables, defaults from `task-defs/nmap-service.json`, validated against the 12 h SQS limit); requests retention 1 h and its DLQ 24 h (Q4); other queues 4 days and DLQs 14 days; cancellations and outcomes visibility 30 s.
+- Outputs: `sns_topic_arns`, `sqs_queue_urls`, `sqs_dlq_urls` (maps by name).
+- Not done: SNS server-side encryption (needs KMS; Q4 chose SSE-SQS only).
+- Live: pending. The read-only plan failed with `ExpiredToken` (Learner Lab credentials expired).
