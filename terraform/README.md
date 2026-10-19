@@ -44,3 +44,14 @@ export TF_VAR_namespace_arn="$(scripts/bootstrap-namespace.sh | tail -1)"
 
 It creates a throwaway cluster `<project>-ns-bootstrap` so ECS creates the namespace, waits until it is listable, then deletes the throwaway cluster (the namespace is kept). The last stdout line is the namespace ARN. `--dry-run` prints the planned commands. `make verify` tests it with `scripts/test-bootstrap-namespace.sh` against a fake `aws` binary.
 
+
+## Pause and resume
+
+`desired_count` (default 1) drives all six ECS services and replaces `deploy/aws/20-pause.sh` and `21-resume.sh`:
+
+```sh
+terraform apply -var desired_count=0   # pause: stop every task
+terraform apply                        # resume
+```
+
+The app services depend on the postgres and mongo services, so Terraform updates the data tier first. Data lives in ephemeral task storage, so a resumed stack starts with empty databases. The ALB, SQS, SNS and SSM resources stay up while paused.

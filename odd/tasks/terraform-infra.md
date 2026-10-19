@@ -47,7 +47,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [x] |
 | TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [x] |
 | TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [x] |
-| TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [ ] |
+| TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [x] |
 | TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [ ] |
 | TF-15 | Outputs: `alb_dns`, `gateway_public_url`, `front_public_url`, `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn`, queue URLs | `.state/gateway_public_url.txt`, `14-verify.sh` | [ ] |
 | TF-16 | OAuth secrets for gateway delivered via SSM/Secrets Manager (spike 6) instead of `.state/google_oauth.env` | `16-update-gateway-oauth.sh` | [ ] |
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-12 done (live plans verified 2026-10-18/19). Next: TF-13 (desired_count).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-13 done (live plans verified 2026-10-18/19). Next: TF-14 (refresh-gh-secrets.sh).
 
 ## TF-01 evidence
 
@@ -231,3 +231,11 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Deviation: container definitions are built with `jsonencode` in HCL; the `task-defs/*.json` files stay until TF-17.
 - Live (2026-10-19): parent re-ran `make verify` (exit 0, 45 passed) and a read-only `terraform plan -lock=false`: `Plan: 81 to add` (66 earlier plus 4 task definitions, 4 services, 4 SSM parameters and 3 random values). Nothing was applied.
 - Commit: 5115cb5. Review: medium, `slice_budget_reached`; declined under the user policy (only TF-10/14/16 are offered).
+
+## TF-13 evidence
+
+- Route: direct inline (one test file, one `depends_on` line, a README section). TDD Strict, runner `make verify`. Branch `feature/pause_resume`.
+- Finding: the behavior already existed. TF-11 and TF-12 wired `var.desired_count` (validated `>= 0`, default 1) into all six services and each had its own pause test. So there was no RED for the behavior; `tests/pause.tftest.hcl` is a regression check that one variable pauses and resumes all six services and the `desired_count` output.
+- Change: app services now also `depends_on` the data services, so Terraform updates postgres and mongo before their clients (the tier order of `21-resume.sh`). README gains "Pause and resume" (`terraform apply -var desired_count=0` / `terraform apply`; databases start empty; ALB, SQS, SNS and SSM stay up). No `wait_for_steady_state`: gateway and nmap-service cannot become healthy until MSG-GW/MSG-NM land, so a wait would hang the apply.
+- GREEN: `make verify` exit 0; `terraform test` 47 passed.
+- Live (2026-10-19): read-only `terraform plan -lock=false -var desired_count=0` showed all six services with `desired_count = 0` (`Plan: 81 to add`). Nothing was applied.

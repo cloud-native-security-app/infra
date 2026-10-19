@@ -173,9 +173,10 @@ resource "aws_ecs_service" "app" {
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
-  # Only for the two ALB services, but depends_on cannot be conditional: a target group
-  # must be attached to a listener before a service can use it.
-  depends_on = [aws_lb_listener.front_https, aws_lb_listener.gateway_https]
+  # Listeners: only the two ALB services need them, but depends_on cannot be conditional
+  # (a target group must be attached to a listener before a service can use it).
+  # Data services: start postgres and mongo before their clients, as 21-resume.sh did.
+  depends_on = [aws_lb_listener.front_https, aws_lb_listener.gateway_https, aws_ecs_service.data]
 
   # Only the ALB services get a grace period (it is invalid without a load balancer).
   health_check_grace_period_seconds = each.value.target_group == null ? null : 60
