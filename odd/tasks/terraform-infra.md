@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-16 done (live plans verified 2026-10-18/19). Next: TF-17 (retire legacy scripts).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-16 done (live plans verified 2026-10-18/19). Next: TF-17 part 2, blocked on MSG-GW / MSG-NM (see below).
 
 ## TF-01 evidence
 
@@ -291,3 +291,9 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - `scripts/push-images.sh` (agent, user-authorized): built and pushed the 4 images to ECR with `:latest` and forced a redeploy (exit 0).
 - `scripts/verify-stack.sh`: 5 passed, 5 failed. OK: front HTTPS 200, ECS postgres, mongo, user-service and front 1/1. FAIL: gateway `/health`, `/api/openapi.json`, `/auth/login` and ECS gateway and nmap-service 0/1. Cause (from the logs, expected): the gateway and nmap-service code still needs the RabbitMQ configuration (`falta la variable de entorno requerida: MS_NMAP_BROKER_ENDPOINT`; gateway `no se pudo cargar la configuración`); they start once MSG-GW / MSG-NM land. A first gateway probe timed out (`000`) while the ALB was still settling; a direct probe then returned `503` (no healthy target), as expected. HTTP :80 redirects 301 to HTTPS :443.
 - Fix: the verify-stack hint used `aws logs tail`, which aws-cli v1 lacks; it now suggests `aws logs filter-log-events` (test updated).
+
+## TF-17 part 2 decision (user, 2026-10-19)
+
+- Keep `deploy/aws/` until the gateway and nmap-service code speaks SNS/SQS (gateway `odd/tasks/sqs-sns-adapter.md` MSG-GW, nmap-service MSG-NM). Today the legacy scripts are the only way to run the whole app (with RabbitMQ).
+- Close TF-17 when `scripts/verify-stack.sh` passes every check against the Terraform stack; then delete `deploy/aws/` and update `START.md` and `deploy/aws/CONSOLE_GUIDE.md`.
+- Do not run the legacy scripts and the Terraform stack at the same time: they use the same resource names.
