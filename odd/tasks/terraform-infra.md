@@ -49,7 +49,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [x] |
 | TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [x] |
 | TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [x] |
-| TF-15 | Outputs: `alb_dns`, `gateway_public_url`, `front_public_url`, `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn`, queue URLs | `.state/gateway_public_url.txt`, `14-verify.sh` | [ ] |
+| TF-15 | Outputs: `alb_dns`, `gateway_public_url`, `front_public_url`, `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn`, queue URLs | `.state/gateway_public_url.txt`, `14-verify.sh` | [x] |
 | TF-16 | OAuth secrets for gateway delivered via SSM/Secrets Manager (spike 6) instead of `.state/google_oauth.env` | `16-update-gateway-oauth.sh` | [ ] |
 | TF-17 | Retire legacy `deploy/aws/` scripts after parity (keep `14-verify.sh` logic as a check) | all, `99-cleanup.sh` -> `terraform destroy` | [ ] |
 
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-14 done (live plans verified 2026-10-18/19). Next: TF-15 (outputs).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-15 done (live plans verified 2026-10-18/19). Next: TF-16 (OAuth secrets in SSM).
 
 ## TF-01 evidence
 
@@ -250,3 +250,12 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Not included: the `infra` repo itself (no Terraform CI yet).
 - Commit: d463b7a. Review: high; offered under the user policy (TF-14) and declined by the user.
 - Live (2026-10-19, user-authorized gh session and learnerlab profile): `--dry-run` validated the credentials and gh auth and listed the 4 repos; the real run updated all 4. `gh secret list` / `gh variable list` show `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and `AWS_REGION` on each repo. No value was printed.
+
+## TF-15 evidence
+
+- Route: direct inline (outputs plus one test file). TDD Strict, runner `make verify`. Branch `feature/outputs`.
+- Already exported by earlier tasks: `alb_dns`, `front_public_url`, `gateway_public_url` (TF-08), `sns_topic_arns`, `sqs_queue_urls`, `sqs_dlq_urls` (TF-10).
+- RED: `terraform test` failed on the new `tests/outputs.tftest.hcl` (undeclared outputs; 47 passed, 1 failed, 2 skipped).
+- Change: outputs `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn` and `service_names` (sorted list of the six ECS services, for the `describe-services` check that replaces `14-verify.sh` in TF-17).
+- GREEN: `make verify` exit 0; `terraform test` 50 passed (one fix in the test itself: list vs tuple comparison needed `tolist`).
+- Live (2026-10-19): read-only `terraform plan -lock=false` lists the new outputs (`Plan: 81 to add`, no new resources). Nothing was applied.

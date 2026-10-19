@@ -137,3 +137,23 @@ output "sqs_dlq_urls" {
   description = "DLQ URLs by consumer queue name (for explicit poison-message sends)."
   value       = { for name, queue in aws_sqs_queue.dlq : name => queue.id }
 }
+
+output "scan_requests_topic_arn" {
+  description = "SNS topic the gateway publishes scan requests to."
+  value       = aws_sns_topic.scan["scan-requests"].arn
+}
+
+output "scan_cancellations_topic_arn" {
+  description = "SNS topic the gateway publishes scan cancellations to."
+  value       = aws_sns_topic.scan["scan-cancellations"].arn
+}
+
+output "scan_outcomes_topic_arn" {
+  description = "SNS topic nmap-service publishes scan outcomes to."
+  value       = aws_sns_topic.scan["scan-outcomes"].arn
+}
+
+output "service_names" {
+  description = "All ECS service names in the cluster, sorted (for describe-services checks)."
+  value       = sort(concat(keys(aws_ecs_service.data), keys(aws_ecs_service.app)))
+}
