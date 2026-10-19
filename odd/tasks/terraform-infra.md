@@ -48,7 +48,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [x] |
 | TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [x] |
 | TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [x] |
-| TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [ ] |
+| TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [x] |
 | TF-15 | Outputs: `alb_dns`, `gateway_public_url`, `front_public_url`, `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn`, queue URLs | `.state/gateway_public_url.txt`, `14-verify.sh` | [ ] |
 | TF-16 | OAuth secrets for gateway delivered via SSM/Secrets Manager (spike 6) instead of `.state/google_oauth.env` | `16-update-gateway-oauth.sh` | [ ] |
 | TF-17 | Retire legacy `deploy/aws/` scripts after parity (keep `14-verify.sh` logic as a check) | all, `99-cleanup.sh` -> `terraform destroy` | [ ] |
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-13 done (live plans verified 2026-10-18/19). Next: TF-14 (refresh-gh-secrets.sh).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-14 done (live plans verified 2026-10-18/19). Next: TF-15 (outputs).
 
 ## TF-01 evidence
 
@@ -248,4 +248,5 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: `scripts/refresh-gh-secrets.sh` reads the `learnerlab` profile, validates it with `sts get-caller-identity` before any write (an expired session aborts and asks for a refresh), requires a session token (refuses non-lab credentials), requires `gh auth status`, then sets secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and variable `AWS_REGION` on the 4 service repos. Values go to `gh` on stdin (never argv) and are never printed. `--dry-run`; overrides `AWS_PROFILE`, `AWS_REGION`, `GH_OWNER`, `REPOS`.
 - Tests (fake `aws` and `gh`): happy path (12 secrets + 4 variables, values only on stdin, nothing printed), expired credentials, missing session token, unauthenticated gh, overrides, dry run.
 - Not included: the `infra` repo itself (no Terraform CI yet).
-- Live: pending (needs the user's authorization to write secrets to GitHub).
+- Commit: d463b7a. Review: high; offered under the user policy (TF-14) and declined by the user.
+- Live (2026-10-19, user-authorized gh session and learnerlab profile): `--dry-run` validated the credentials and gh auth and listed the 4 repos; the real run updated all 4. `gh secret list` / `gh variable list` show `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and `AWS_REGION` on each repo. No value was printed.
