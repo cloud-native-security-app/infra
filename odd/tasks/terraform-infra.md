@@ -270,3 +270,12 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Replaces `16-update-gateway-oauth.sh` (no more task-definition re-registration with secrets inline).
 - Live (2026-10-19): read-only `terraform plan -lock=false` showed the two parameters (`Plan: 83 to add`). Nothing was applied. A live run of the script needs the applied stack (the gateway service must exist).
 - Commit: 2cb6f2d. Native review (RDD): risk high, offered under the user policy (TF-16) and granted; 4 lenses, 0 findings; approved and acknowledged 2026-10-19 (lineage `review-7bc036da1a158c68`, burned).
+
+## TF-17 evidence (part 1)
+
+- Route: delegated writer (two scripts, two offline tests, Makefile wiring, README). TDD Strict, runner `make verify`. Branch `feature/stack_tools`.
+- User-approved split: part 1 adds `scripts/push-images.sh` and `scripts/verify-stack.sh`. Part 2 deletes `deploy/aws/` and updates `START.md` and `deploy/aws/CONSOLE_GUIDE.md`, only after a real `terraform apply` plus a passing `verify-stack.sh`. TF-17 stays unticked.
+- RED: `scripts/test-push-images.sh` failed 35 checks (script missing, exit 127); `scripts/test-verify-stack.sh` failed 29 checks (script missing).
+- GREEN: both tests print `OK`; shellcheck clean; see the `make verify` result below.
+- Change: `push-images.sh` (replaces 05, 07, 17) reads `ecr_repository_urls`, `gateway_public_url`, `cluster_name` from `terraform output -json`, validates credentials with STS, logs in to ECR with the password on stdin only, builds and pushes `:latest` for all four services or a subset, passes `VITE_GATEWAY_BASE_URL` to front and the `tls` build context to nmap-service only if `broker/rabbitmq/tls` exists (drop with MSG-NM), then forces an ECS redeploy (`--no-redeploy` skips; `--dry-run` runs no docker or mutation). `verify-stack.sh` (replaces 14-verify.sh) checks gateway `/health` 200, `/api/openapi.json` 200, `/auth/login` 302, front `/` 200 (`curl -sk`, self-signed ALB certificate) and every service from `service_names` (ACTIVE, running == desired), printing `[OK]`/`[FAIL]` lines and exiting 1 on any failure. README gains "End-to-end deploy".
+- Live: pending (needs the first apply).
