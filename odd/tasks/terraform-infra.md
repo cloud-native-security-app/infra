@@ -46,7 +46,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`, created beforehand by `scripts/bootstrap-namespace.sh`, ARN passed as `var.namespace_arn`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [x] |
 | TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [x] |
 | TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [x] |
-| TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [ ] |
+| TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [x] |
 | TF-13 | `desired_count` variable (0 = paused) | `20-pause.sh`, `21-resume.sh` | [ ] |
 | TF-14 | `refresh-gh-secrets.sh`: Learner Lab creds -> `gh secret set` on the service repos | new | [ ] |
 | TF-15 | Outputs: `alb_dns`, `gateway_public_url`, `front_public_url`, `scan_requests_topic_arn`, `scan_cancellations_topic_arn`, `scan_outcomes_topic_arn`, queue URLs | `.state/gateway_public_url.txt`, `14-verify.sh` | [ ] |
@@ -67,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-11 done (live plans verified 2026-10-18/19). Next: TF-12 (app services).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-12 done (live plans verified 2026-10-18/19). Next: TF-13 (desired_count).
 
 ## TF-01 evidence
 
@@ -217,3 +217,17 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Provider: `hashicorp/random ~> 3.0` (locked 3.9.1 for the 4 platforms). Shared mocks gained `aws_ecs_cluster`, `aws_ecs_task_definition`, `aws_ssm_parameter` and `data.aws_iam_role` ARN defaults.
 - Follow-up for TF-12: `task-defs/user-service.json` still uses `devpassword`; user-service must read `/security-app/postgres/password`.
 - Live (2026-10-19): read-only `terraform plan -lock=false` showed `Plan: 66 to add` (60 earlier plus 2 task definitions, 2 services, the SSM parameter and the random password). Nothing was applied.
+
+## TF-12 evidence
+
+- Route: delegated writer (bounded), TDD Strict, runner `make verify`. Branch `feature/app_services`.
+- RED: `terraform test` failed on the new `tests/app_services.tftest.hcl` (undeclared resources; 35 passed, 1 failed, 9 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 45 passed.
+- Change: `terraform/app_services.tf` with `aws_ecs_task_definition.app` and `aws_ecs_service.app` (`for_each` over `local.app_services`) for user-service, nmap-service, gateway and front. Fargate awsvpc 256/512; LabRole as execution and task role (tasks call SQS/SNS/SSM); images `<ECR repository_url>:latest`; awslogs to the TF-09 log groups; services in the internal SG with a public IP and `desired_count = var.desired_count`.
+- Ownership (decision): Terraform registers a complete bootstrap task definition so the stack runs before CI exists; each service has `lifecycle { ignore_changes = [task_definition] }` because the service repos' CI owns later revisions. The CI task definitions must reference the same SSM parameter names as below.
+- Service Connect: user-service publishes `user-service:8080`; nmap-service and gateway are client-only; front has none (as in script 13). gateway and front attach to `aws_lb_target_group.app[...]` (container port 8080, `health_check_grace_period_seconds = 60`); all services `depends_on` both HTTPS listeners (`depends_on` cannot be conditional).
+- Secrets (same pattern as TF-11): `random_password` / `random_id` stored in SSM SecureStrings and injected via container `secrets`, never plain `environment`: `/security-app/gateway-shared-secret` (user-service `GATEWAY_SHARED_SECRET` and gateway `MS_USUARIOS_SHARED_SECRET`), `/security-app/user-service/credentials-encryption-key` (32 bytes as 64 hex chars), `/security-app/gateway/session-signing-key`, `/security-app/user-service/database-url` (embeds `random_password.postgres`; closes the TF-11 follow-up). The values also live in the encrypted S3 state. Google OAuth stays `dev-placeholder` plain env until TF-16.
+- Messaging env: RabbitMQ variables dropped (`BROKER_*`, `MS_NMAP_BROKER_*`, `SSL_CERT_FILE`). gateway gets `AWS_REGION`, `SCAN_REQUESTS_TOPIC_ARN`, `SCAN_CANCELLATIONS_TOPIC_ARN`, `GATEWAY_SCAN_OUTCOMES_QUEUE_URL`, `GATEWAY_SCAN_OUTCOMES_DLQ_URL`; nmap-service gets `AWS_REGION`, `MS_NMAP_SCAN_REQUESTS_QUEUE_URL`, `MS_NMAP_SCAN_CANCELLATIONS_QUEUE_URL`, `MS_NMAP_SCAN_OUTCOMES_TOPIC_ARN` and the two `*_DLQ_URL`. The gateway/nmap code still speaks AMQP until MSG-GW/MSG-NM land, so these two start but will not process scans yet. nmap SSH timeouts come from `ssh_connect_timeout_secs` / `ssh_command_timeout_secs`.
+- Deviation: container definitions are built with `jsonencode` in HCL; the `task-defs/*.json` files stay until TF-17.
+- Live (2026-10-19): parent re-ran `make verify` (exit 0, 45 passed) and a read-only `terraform plan -lock=false`: `Plan: 81 to add` (66 earlier plus 4 task definitions, 4 services, 4 SSM parameters and 3 random values). Nothing was applied.
+- Commit: 5115cb5. Review: medium, `slice_budget_reached`; declined under the user policy (only TF-10/14/16 are offered).
