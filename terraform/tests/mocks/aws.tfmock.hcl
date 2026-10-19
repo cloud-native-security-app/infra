@@ -18,3 +18,4 @@ mock_resource "aws_acm_certificate" {
     arn = "arn:aws:acm:us-east-1:123456789012:certificate/0"
   }
 }
+

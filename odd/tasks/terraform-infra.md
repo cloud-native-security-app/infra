@@ -23,6 +23,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 - No RabbitMQ ECR repo, ECS service or AMQP security-group rules.
 - No secrets or state in git.
 - No `aws_s3_bucket` can be managed by Terraform in this Learner Lab: an SCP explicitly denies `s3:GetBucketObjectLockConfiguration`, which the aws provider calls on every read. The state bucket is created by `scripts/bootstrap-state-bucket.sh` (AWS CLI).
+- The lab denies `servicediscovery:CreateHttpNamespace` and `servicediscovery:GetNamespace`: the Cloud Map namespace is created by `scripts/bootstrap-namespace.sh` and its ARN enters Terraform as `var.namespace_arn`.
 
 ## Tooling
 
@@ -42,7 +43,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 | TF-06 | `data "aws_iam_role" "lab"` for `LabRole` | `03-iam-roles.sh` | [x] |
 | TF-07 | ECR repos x4: user-service, nmap-service, gateway, front (`security-app/<name>`); no `rabbitmq` repo (RabbitMQ retired) | `02-ecr-repos.sh` | [x] |
 | TF-08 | ALB, target groups, listeners; HTTPS via `tls_self_signed_cert` + `aws_acm_certificate` | `06-alb.sh`, `15-enable-https-gateway.sh` | [x] |
-| TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [ ] |
+| TF-09 | ECS cluster with `service_connect_defaults` (namespace `security-app.local`, created beforehand by `scripts/bootstrap-namespace.sh`, ARN passed as `var.namespace_arn`) and CloudWatch log groups (`/ecs/security-app/*`) | `08-ecs-cluster-namespace-logs.sh` | [x] |
 | TF-10 | Messaging: SNS topics (`scan-requests`, `scan-cancellations`, `scan-outcomes`), SQS queues + DLQs (redrive `maxReceiveCount=3`, `RedriveAllowPolicy`), SNS->SQS subscriptions (raw delivery, `FilterPolicy` on `routing_key`), queue policies (SNS source ARN, `aws:SecureTransport`) and SSE, as signed off in `broker` : `odd/tasks/sqs-sns-migration.md` (MSG-01, MSG-08). Replaces the `rabbitmq` ECS service. Planning heuristic about 400 changed lines; may span two slices | `10-deploy-tier0-infra.sh` (rabbitmq), `task-defs/rabbitmq.json` (both dropped) | [ ] |
 | TF-11 | postgres and mongo task defs via `templatefile()` from `task-defs/` JSON + ECS services with Service Connect aliases (`postgres:5432`, `mongo:27017`) | `09-register-task-defs.sh`, `10-deploy-tier0-infra.sh` | [ ] |
 | TF-12 | App services user-service, nmap-service, gateway, front: Service Connect config, bootstrap task def, `ignore_changes = [task_definition]`, ALB attachments for gateway/front | `11`, `12`, `13` | [ ] |
@@ -66,7 +67,7 @@ Out: service image builds and task-def revisions (service repos' CI), gateway re
 
 ## Progress / Next step
 
-Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-08 done (live plans verified 2026-10-18). Next: TF-09 (ECS cluster, namespace, log groups).
+Status: TF-01 and TF-02 done. 2026-10-17: TF-10 replaced (was `aws_mq_broker`, denied in the Learner Lab). TF-03 to TF-09 done (live plans verified 2026-10-18). Next: TF-10 (SNS/SQS messaging).
 
 ## TF-01 evidence
 
@@ -175,3 +176,19 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Live (2026-10-18): read-only `terraform plan -lock=false` showed `Plan: 28 to add` (19 earlier plus the ALB, 2 TGs, 3 listeners, key, certificate and ACM import). Nothing was applied.
 - Commit: df9514c (code, tests and this doc).
 - Native review (RDD): risk high, consent granted, 4 lenses, 0 findings; approved and acknowledged 2026-10-18 (lineage `review-dd69d20be332141c`, authority burned).
+
+## TF-09 evidence
+
+- Route: delegated writer (bounded), TDD Strict, runner `make verify`. Branch `feature/ecs_cluster`.
+- RED: `terraform test` failed on the new `tests/ecs.tftest.hcl` (undeclared data source and resources; 18 passed, 1 failed, 3 skipped).
+- GREEN: `make verify` exit 0; `terraform test` 22 passed; shellcheck clean on `scripts/*.sh`; `scripts/test-bootstrap-namespace.sh` OK (RED: script missing, all assertions failed).
+- Change: `terraform/ecs.tf` with `data.aws_service_discovery_http_namespace.main` (by name), `aws_ecs_cluster.main` (`security-app-cluster-v2`, `service_connect_defaults` = namespace ARN), `aws_ecs_cluster_capacity_providers.main` (FARGATE, default strategy weight 1) and `aws_cloudwatch_log_group.service` for the 6 task-family services (`/ecs/security-app/<svc>`, 3 days, no rabbitmq). Outputs `cluster_arn`, `namespace_arn`, `log_group_names`.
+- Script: `scripts/bootstrap-namespace.sh` (idempotent; if the namespace is not listed, creates a throwaway cluster `<project>-ns-bootstrap` with `--service-connect-defaults namespace=<project>.local`, retries the service-linked-role error, polls `list-namespaces` 20 x 3 s, always deletes the throwaway cluster via trap, never deletes the namespace; `--dry-run`; last stdout line is the namespace ARN). Tested offline by `scripts/test-bootstrap-namespace.sh` (fake `aws`), wired into `make verify`.
+- Tests: shared mocks gain `mock_data "aws_service_discovery_http_namespace"` (valid ARN) because the provider validates the ARN on mocked apply; `skeleton.tftest.hcl` now uses the shared mocks source.
+- Decision: namespace via CLI, not Terraform, because `voclabs` is denied `servicediscovery:CreateHttpNamespace` (verified live 2026-10-18, AccessDeniedException) and the provider (6.69.1) requires an ARN, not a name, for `service_connect_defaults.namespace`. Only the namespace lives outside Terraform, like the state bucket.
+- Commit: 3d5ad7c. Native review (RDD): risk high, granted, 4 lenses, 0 findings, approved (lineage `review-0fe0ca9f1f8d716a`, burned).
+- Live (2026-10-18, user-approved): `scripts/bootstrap-namespace.sh` created `security-app.local` (`ns-t3qf4rogyv6mtkcz`) through the throwaway cluster, which ended `INACTIVE` (deleted); a second run printed "nothing to do" (idempotent).
+- Live finding: the read-only `terraform plan` failed in the data source with `AccessDeniedException ... servicediscovery:GetNamespace` (the lab allows `ListNamespaces` but not `GetNamespace`).
+- Correction: the data source was replaced by the required variable `namespace_arn` (validated as a Cloud Map namespace ARN), fed with `export TF_VAR_namespace_arn="$(scripts/bootstrap-namespace.sh | tail -1)"`. The shared `mock_data` was removed; every test file sets `namespace_arn` in a `variables` block; `ecs.tftest.hcl` adds an invalid-ARN `expect_failures` run. RED: 0 passed, 7 failed (invalid mocked ARN, variable undeclared). GREEN: `make verify` exit 0, `terraform test` 23 passed.
+- Live plan after the correction: `Plan: 36 to add, 0 to change, 0 to destroy` with `namespace_arn` resolved. Nothing was applied.
+- Open risk: `ecs:CreateCluster` with an existing namespace ARN might need extra `servicediscovery` permissions for the caller; only the first `apply` can prove it.

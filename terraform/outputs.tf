@@ -107,3 +107,18 @@ output "subnet_ids" {
     error_message = "The ALB needs subnets in at least 2 availability zones; the default VPC returned fewer."
   }
 }
+
+output "cluster_arn" {
+  description = "ECS cluster ARN."
+  value       = aws_ecs_cluster.main.arn
+}
+
+output "namespace_arn" {
+  description = "Cloud Map HTTP namespace ARN (created by scripts/bootstrap-namespace.sh)."
+  value       = var.namespace_arn
+}
+
+output "log_group_names" {
+  description = "CloudWatch log group names by service."
+  value       = { for name, group in aws_cloudwatch_log_group.service : name => group.name }
+}

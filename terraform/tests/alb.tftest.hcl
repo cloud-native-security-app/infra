@@ -3,6 +3,10 @@ mock_provider "aws" {
   source = "./tests/mocks"
 }
 
+variables {
+  namespace_arn = "arn:aws:servicediscovery:us-east-1:123456789012:namespace/ns-0"
+}
+
 override_data {
   target = data.aws_subnets.default
   values = {
