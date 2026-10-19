@@ -1,4 +1,4 @@
-# SNS + SQS messaging that replaces RabbitMQ (10-deploy-tier0-infra.sh, task-defs/rabbitmq.json).
+# SNS + SQS messaging that replaces RabbitMQ.
 # Contract: broker repo, odd/tasks/sqs-sns-migration.md (MSG-01, signed off 2026-10-17).
 # All tasks share LabRole, so these resource policies are the only isolation layer.
 

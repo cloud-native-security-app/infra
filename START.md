@@ -1,9 +1,45 @@
-# Cómo levantar y probar `security-app` en local
+# Cómo levantar y probar `security-app`
+
+Dos caminos: **AWS (Terraform)** y **local (docker compose)**.
+
+## A. AWS Learner Lab con Terraform
+
+El flujo completo (bucket de estado, namespace, `terraform apply`, push de
+imágenes, cliente Google, verificación, pausa/resume, destroy) está en
+[`terraform/README.md`](terraform/README.md#end-to-end-deploy), sección
+"End-to-end deploy". Los scripts imperativos de `deploy/aws/` ya no existen.
+
+Resumen: `scripts/bootstrap-state-bucket.sh` -> `scripts/bootstrap-namespace.sh`
+-> `terraform -chdir=terraform apply` -> `scripts/push-images.sh` ->
+`scripts/set-google-oauth.sh` -> `scripts/verify-stack.sh`.
+
+### Google OAuth: pasos manuales (una sola vez)
+
+En <https://console.cloud.google.com>:
+
+1. APIs & Services -> OAuth consent screen
+   - User Type: External
+   - Scopes: `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`
+   - Test users: las cuentas Gmail que van a hacer login
+2. APIs & Services -> Credentials -> Create credentials -> OAuth client ID
+   - Application type: Web application
+   - Authorized redirect URIs, EXACTO: salida de Terraform `gateway_public_url`
+     (`terraform -chdir=terraform output -raw gateway_public_url`) + `/auth/callback`
+   - Copia el Client ID y el Client secret.
+3. Guárdalos en SSM y redeploya el gateway:
+   `GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh`
+
+El gateway usa un certificado autofirmado (sin dominio): el navegador avisa.
+Si no pasas las variables, `set-google-oauth.sh` lee el archivo local sin
+versionar `deploy/aws/.state/google_oauth.env` (gitignored; guarda ahí los
+valores, nunca los commitees).
+
+## B. Local con docker compose
 
 Guía de arranque para los 5 servicios (`broker`, `user-service`, `nmap-service`,
 `gateway`, `front`) vía `docker-compose.yml` en esta carpeta.
 
-## 0. Prerrequisitos
+### 0. Prerrequisitos
 
 - Docker + Docker Compose v2 (`docker compose version`).
 - Certificados TLS de laboratorio del broker ya generados. Si
@@ -14,7 +50,7 @@ Guía de arranque para los 5 servicios (`broker`, `user-service`, `nmap-service`
   (Ahora mismo ya existen en este checkout — no hace falta correrlo salvo que
   se borren o se clone el repo en otra máquina.)
 
-## 1. Levantar todo
+### 1. Levantar todo
 
 ```bash
 docker compose up --build
@@ -28,7 +64,7 @@ incrementales.
 Para dejarlo en background: `docker compose up --build -d`, y ver logs con
 `docker compose logs -f <servicio>`.
 
-## 2. Qué verificar que subió bien
+### 2. Qué verificar que subió bien
 
 ```bash
 # RabbitMQ management UI (usuario lab-admin / lab-only-not-a-real-secret)
@@ -57,7 +93,7 @@ del compose inyecta la CA de laboratorio al contenedor.
 Front: abre `http://localhost:8082` en el navegador — debe verse la pantalla
 de login.
 
-## 3. Probar `user-service` directamente (sin pasar por login)
+### 3. Probar `user-service` directamente (sin pasar por login)
 
 `user-service` nunca debe exponerse a internet en un despliegue real (solo el
 Gateway le habla), pero para probarlo aislado en este compose puedes mandarle
@@ -97,7 +133,7 @@ error tipado `MissingIdentity`.
 > manual (usamos el formato que `user-service` realmente espera), pero es una
 > inconsistencia real entre ambos repos si se integran de verdad más adelante.
 
-## 4. Ver el hueco 1 en vivo (envío de escaneo bloqueado)
+### 4. Ver el hueco 1 en vivo (envío de escaneo bloqueado)
 
 ```bash
 curl -i http://localhost:8080/auth/login
@@ -114,16 +150,14 @@ Google reales, la opción más limpia es un endpoint de dev-login en `gateway`
 (mismo espíritu que `front/e2e/contract-server`, que ya hace esto para el
 front) — es trabajo de feature aparte, no de esta guía.
 
-## 5. Apagar / limpiar
+### 5. Apagar / limpiar
 
 ```bash
 docker compose down          # detiene y borra los contenedores
 docker compose down -v       # además borra los volúmenes (Postgres/Mongo quedan vacíos la próxima vez)
 ```
 
----
-
-## Huecos conocidos (por qué no hay un flujo completo login→escaneo→resultado)
+### Huecos conocidos (por qué no hay un flujo completo login→escaneo→resultado)
 
 1. **`gateway POST /api/scans` responde `501`.** El handler ya está
    implementado y llama a `user-service` para resolver

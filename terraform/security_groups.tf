@@ -1,4 +1,4 @@
-# Mirrors deploy/aws/04-network.sh. RabbitMQ ports (5672/5671/15672) are gone:
+# Replaces the former 04-network.sh. RabbitMQ ports (5672/5671/15672) are gone:
 # messaging moved to SNS/SQS, which tasks reach through egress.
 
 locals {

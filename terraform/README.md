@@ -6,7 +6,7 @@ The bucket is created by `scripts/bootstrap-state-bucket.sh` (AWS CLI), not by T
 
 ## End-to-end deploy
 
-Replaces `deploy/aws/` (`99-cleanup.sh` becomes `terraform destroy`). Run from the `infra` repo root with `export AWS_PROFILE=learnerlab`.
+This flow replaced the former imperative `deploy/aws/` scripts (removed in TF-17; `99-cleanup.sh` became `terraform destroy`). Run from the `infra` repo root with `export AWS_PROFILE=learnerlab`.
 
 1. Bootstrap the state bucket (once): `BUCKET="$(scripts/bootstrap-state-bucket.sh | tail -1)"` ([One-time bootstrap](#one-time-bootstrap)).
 2. Bootstrap the namespace: `export TF_VAR_namespace_arn="$(scripts/bootstrap-namespace.sh | tail -1)"` ([Cloud Map namespace](#cloud-map-namespace)).
@@ -64,7 +64,7 @@ It creates a throwaway cluster `<project>-ns-bootstrap` so ECS creates the names
 
 ## Pause and resume
 
-`desired_count` (default 1) drives all six ECS services and replaces `deploy/aws/20-pause.sh` and `21-resume.sh`:
+`desired_count` (default 1) drives all six ECS services and replaced the former pause/resume scripts:
 
 ```sh
 terraform apply -var desired_count=0   # pause: stop every task
@@ -92,4 +92,4 @@ Terraform creates `/security-app/gateway/google-client-id` and `/security-app/ga
 GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
 ```
 
-Without those variables it reads `deploy/aws/.state/google_oauth.env` (written by the legacy scripts). Values reach `aws` through 0600 temp files, never argv, and are never printed. The Google redirect URI is the `gateway_public_url` output plus `/auth/callback`. `--dry-run` validates without writing. `make verify` tests it with `scripts/test-set-google-oauth.sh`.
+Without those variables it reads the untracked local file `deploy/aws/.state/google_oauth.env` (left by the retired scripts; gitignored, never committed). Values reach `aws` through 0600 temp files, never argv, and are never printed. The Google redirect URI is the `gateway_public_url` output plus `/auth/callback`. `--dry-run` validates without writing. `make verify` tests it with `scripts/test-set-google-oauth.sh`.

@@ -5,7 +5,7 @@ variable "region" {
 }
 
 variable "project" {
-  description = "Project name used as the prefix of every resource name (PROJECT in deploy/aws/00-env.sh)."
+  description = "Project name used as the prefix of every resource name."
   type        = string
   default     = "security-app"
 }

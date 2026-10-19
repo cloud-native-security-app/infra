@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Builds the service images, pushes them to the ECR repositories created by Terraform and
-# forces an ECS redeploy so the running services pick up :latest. Replaces
-# deploy/aws/05-build-push-core-images.sh, 07-build-push-front-image.sh and
-# 17-rebuild-front-https.sh until each service repo has its own CI.
+# forces an ECS redeploy so the running services pick up :latest, until each service
+# repo has its own CI. Replaces the former imperative build/push scripts.
 #
 # Usage: scripts/push-images.sh [--dry-run] [--no-redeploy] [service...]
 #   service: any of user-service nmap-service gateway front (default: all four)

@@ -1,4 +1,4 @@
-# Mirrors deploy/aws/06-alb.sh plus the HTTPS end state of 15-enable-https-gateway.sh:
+# Replaces the former 06-alb.sh plus the HTTPS end state of 15-enable-https-gateway.sh:
 # front on 443, gateway on 8080, both HTTPS on the same host so the gateway's
 # Secure + SameSite=Strict session cookie reaches the front's fetch() calls.
 

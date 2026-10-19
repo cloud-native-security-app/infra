@@ -116,7 +116,7 @@ run "services_join_service_connect" {
       aws_ecs_service.data[k].service_connect_configuration[0].service[0].client_alias[0].dns_name == k &&
       aws_ecs_service.data[k].service_connect_configuration[0].service[0].client_alias[0].port == port
     ])
-    error_message = "Service Connect aliases postgres:5432 and mongo:27017 (10-deploy-tier0-infra.sh)"
+    error_message = "Service Connect aliases postgres:5432 and mongo:27017"
   }
 }
 

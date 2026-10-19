@@ -1,5 +1,5 @@
-# Mirrors task-defs/postgres.json, task-defs/mongo.json and 10-deploy-tier0-infra.sh
-# (without rabbitmq). Terraform owns these task definitions, so no ignore_changes.
+# Replaces the former postgres/mongo task-defs and tier0 deploy script (without rabbitmq).
+# Terraform owns these task definitions, so no ignore_changes.
 # Data lives in the task's ephemeral storage, as before: a restart starts empty.
 
 # Replaces the hardcoded "devpassword". No special characters: user-service puts it in a URL.
