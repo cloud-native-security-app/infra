@@ -159,3 +159,21 @@ run "outputs_expose_topics_and_queues" {
     error_message = "queue and DLQ URLs must be exported (consumers need the DLQ URL for explicit sends, Q5)"
   }
 }
+
+run "topic_policies_only_use_actions_sns_accepts" {
+  command = apply
+
+  # SNS rejects wildcards and non-topic actions in a topic policy
+  # ("Policy statement action out of service scope"), found on the first live apply.
+  assert {
+    condition = alltrue(flatten([for p in aws_sns_topic_policy.scan : [
+      for s in jsondecode(p.policy).Statement : [
+        for a in flatten([s.Action]) : contains([
+          "SNS:Publish", "SNS:Subscribe", "SNS:Receive", "SNS:GetTopicAttributes", "SNS:SetTopicAttributes",
+          "SNS:AddPermission", "SNS:RemovePermission", "SNS:DeleteTopic", "SNS:ListSubscriptionsByTopic",
+        ], a)
+      ]
+    ]]))
+    error_message = "topic policies may only list the SNS topic actions, without wildcards"
+  }
+}

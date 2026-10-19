@@ -280,3 +280,11 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - Change: `push-images.sh` (replaces 05, 07, 17) reads `ecr_repository_urls`, `gateway_public_url`, `cluster_name` from `terraform output -json`, validates credentials with STS, logs in to ECR with the password on stdin only, builds and pushes `:latest` for all four services or a subset, passes `VITE_GATEWAY_BASE_URL` to front and the `tls` build context to nmap-service only if `broker/rabbitmq/tls` exists (drop with MSG-NM), then forces an ECS redeploy (`--no-redeploy` skips; `--dry-run` runs no docker or mutation). `verify-stack.sh` (replaces 14-verify.sh) checks gateway `/health` 200, `/api/openapi.json` 200, `/auth/login` 302, front `/` 200 (`curl -sk`, self-signed ALB certificate) and every service from `service_names` (ACTIVE, running == desired), printing `[OK]`/`[FAIL]` lines and exiting 1 on any failure. README gains "End-to-end deploy".
 - Live: pending (needs the first apply).
 - Commit: 4e313fa. Parent re-ran `make verify` (exit 0, 51 passed, all 6 script tests OK). Review: high; declined under the user policy (only TF-10/14/16 are offered).
+
+## First live apply (2026-10-19)
+
+- Authorized by the user. The classifier blocked the agent's `terraform apply`, so the user ran it in their own terminal (plan saved with `-out`, then applied).
+- Result: 80 of 83 resources created (state lists 84 entries with the 4 data sources). The 3 `aws_sns_topic_policy.scan` failed: `SetTopicAttributes ... InvalidParameter: Policy statement action out of service scope!`.
+- Cause: the deny-non-TLS statement used `Action = "sns:*"`; a topic policy only accepts the explicit SNS topic actions. The mocked tests could not see it.
+- Fix (TDD): new run `topic_policies_only_use_actions_sns_accepts` in `tests/messaging.tftest.hcl` (RED: 51 passed, 1 failed on the `sns:*` action), then `local.sns_topic_actions` (Publish, Subscribe, Receive, GetTopicAttributes, SetTopicAttributes, AddPermission, RemovePermission, DeleteTopic, ListSubscriptionsByTopic) used in the deny statement. GREEN: `make verify` exit 0, 52 passed.
+- Live plan after the fix: `Plan: 3 to add, 0 to change, 0 to destroy` (only the 3 topic policies). Second apply pending (user runs it).
