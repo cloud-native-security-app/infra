@@ -41,6 +41,20 @@ resource "aws_ssm_parameter" "session_signing_key" {
   value = random_password.session_signing_key.result
 }
 
+# Google OAuth client of the gateway. Terraform only seeds a placeholder; the real values
+# are written by scripts/set-google-oauth.sh, so the secret never enters Terraform state.
+resource "aws_ssm_parameter" "google_oauth" {
+  for_each = toset(["client-id", "client-secret"])
+
+  name  = "/${var.project}/gateway/google-${each.key}"
+  type  = "SecureString"
+  value = "unset-run-scripts-set-google-oauth"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_ssm_parameter" "database_url" {
   name  = "/${var.project}/user-service/database-url"
   type  = "SecureString"
@@ -95,11 +109,8 @@ locals {
       service_connect = "client"
       target_group    = "gateway"
       environment = {
-        HTTP_HOST = "0.0.0.0"
-        HTTP_PORT = "8080"
-        # Placeholders until TF-16 wires the real Google OAuth credentials.
-        GOOGLE_CLIENT_ID                        = "dev-placeholder"
-        GOOGLE_CLIENT_SECRET                    = "dev-placeholder"
+        HTTP_HOST                               = "0.0.0.0"
+        HTTP_PORT                               = "8080"
         GOOGLE_REDIRECT_URI                     = "https://${aws_lb.main.dns_name}:8080/auth/callback"
         FRONT_BASE_URL                          = "https://${aws_lb.main.dns_name}"
         SESSION_TTL_SECS                        = "3600"
@@ -115,6 +126,8 @@ locals {
       secrets = {
         MS_USUARIOS_SHARED_SECRET = aws_ssm_parameter.gateway_shared_secret.arn
         SESSION_SIGNING_KEY       = aws_ssm_parameter.session_signing_key.arn
+        GOOGLE_CLIENT_ID          = aws_ssm_parameter.google_oauth["client-id"].arn
+        GOOGLE_CLIENT_SECRET      = aws_ssm_parameter.google_oauth["client-secret"].arn
       }
     }
     front = {

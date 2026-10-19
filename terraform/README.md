@@ -66,3 +66,13 @@ scripts/refresh-gh-secrets.sh
 ```
 
 It reads the `learnerlab` profile, checks it with `sts get-caller-identity` (an expired session aborts before any write), and sets the secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and the variable `AWS_REGION` on `cloud-native-security-app/{user-service,nmap-service,gateway,front}`. Values reach `gh` on stdin and are never printed. Override with `AWS_PROFILE`, `AWS_REGION`, `GH_OWNER`, `REPOS`. `make verify` tests it with `scripts/test-refresh-gh-secrets.sh` against fake `aws` and `gh` binaries.
+
+## Google OAuth client
+
+Terraform creates `/security-app/gateway/google-client-id` and `/security-app/gateway/google-client-secret` as SSM SecureStrings with a placeholder value and ignores later value changes, so the real secret never enters Terraform or its state. After `apply`, store the real client and redeploy the gateway:
+
+```sh
+GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
+```
+
+Without those variables it reads `deploy/aws/.state/google_oauth.env` (written by the legacy scripts). Values reach `aws` through 0600 temp files, never argv, and are never printed. The Google redirect URI is the `gateway_public_url` output plus `/auth/callback`. `--dry-run` validates without writing. `make verify` tests it with `scripts/test-set-google-oauth.sh`.
