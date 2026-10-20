@@ -93,3 +93,15 @@ GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
 ```
 
 Without those variables it reads the untracked local file `deploy/aws/.state/google_oauth.env` (left by the retired scripts; gitignored, never committed). Values reach `aws` through 0600 temp files, never argv, and are never printed. The Google redirect URI is the `gateway_public_url` output plus `/auth/callback`. `--dry-run` validates without writing. `make verify` tests it with `scripts/test-set-google-oauth.sh`.
+
+## Scan test target
+
+`scripts/create-test-target.sh` creates a disposable Amazon Linux 2023 `t3.micro` (nmap installed, SSH password login) to test the network-credentials scan end to end. It stays outside Terraform on purpose: it is a throwaway lab target, not part of the platform. Apply the Terraform stack first; SSH (tcp/22) is allowed only from `security-app-internal-sg`, never from `0.0.0.0/0`.
+
+```sh
+scripts/create-test-target.sh            # create or reuse; prints the form values
+scripts/create-test-target.sh --dry-run  # plan only
+scripts/create-test-target.sh --destroy  # terminate the instance and delete its SG
+```
+
+In the front "Credenciales de red" form use the printed PRIVATE IP as `<ip>/32`, user `ec2-user` and the password (shown once, only at creation), sudo unchecked. sshd may need 1-2 minutes after creation. To reset the password, run `--destroy` and then create again. Overrides: `PROJECT`, `AWS_PROFILE`, `AWS_REGION`. `make verify` tests it with `scripts/test-create-test-target.sh`.

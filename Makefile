@@ -10,6 +10,7 @@ verify:
 	bash scripts/test-refresh-gh-secrets.sh
 	bash scripts/test-set-google-oauth.sh
 	bash scripts/test-push-images.sh
+	bash scripts/test-create-test-target.sh
 	bash scripts/test-verify-stack.sh
 	@for f in scripts/*.sh; do bash -n "$$f" || exit 1; done; echo "bash -n: OK"
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -x scripts/*.sh; else echo "shellcheck not installed: skipped"; fi
