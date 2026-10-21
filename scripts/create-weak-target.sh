@@ -189,12 +189,13 @@ http {
     ssl_certificate /etc/nginx/weak-target.crt;
     ssl_certificate_key /etc/nginx/weak-target.key;
     ssl_protocols TLSv1.2;
-    ssl_ciphers DHE-RSA-AES128-GCM-SHA256;
+    ssl_ciphers "DHE-RSA-AES128-GCM-SHA256:@SECLEVEL=0";
     ssl_prefer_server_ciphers on;
     ssl_dhparam /etc/nginx/dh1024.pem;
   }
 }
 NGINX
+nginx -t
 systemctl enable --now nginx
 
 # Misconfiguration 2: stock vsftpd with anonymous read-only access (no passive mode).

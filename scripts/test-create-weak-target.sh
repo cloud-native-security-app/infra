@@ -83,6 +83,7 @@ rg -q -- "run-instances.*systemctl restart sshd" "$WORK/create.aws" || err "crea
 rg -q -- "run-instances.*dnf install -y.* nginx" "$WORK/create.aws" || err "create: user-data must install nginx"
 rg -q -- "run-instances.*openssl dhparam -out /etc/nginx/dh1024.pem 1024" "$WORK/create.aws" || err "create: user-data must generate a 1024-bit DH group"
 rg -q -- "run-instances.*ssl_dhparam /etc/nginx/dh1024.pem" "$WORK/create.aws" || err "create: nginx must use ssl_dhparam"
+rg -q -F "@SECLEVEL=0" "$WORK/create.aws" || err "create: the weak DH group needs @SECLEVEL=0 or nginx refuses to start on AL2023"
 rg -q -- "run-instances.*listen 8443 ssl" "$WORK/create.aws" || err "create: nginx must serve HTTPS on 8443"
 rg -q -- "run-instances.*listen 80" "$WORK/create.aws" || err "create: nginx must serve HTTP on 80"
 rg -q -- "run-instances.*location /\.git/" "$WORK/create.aws" || err "create: nginx must expose /.git/"
