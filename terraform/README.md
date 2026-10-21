@@ -105,3 +105,23 @@ scripts/create-test-target.sh --destroy  # terminate the instance and delete its
 ```
 
 In the front "Credenciales de red" form use the printed PRIVATE IP as `<ip>/32`, user `ec2-user` and the password (shown once, only at creation), sudo unchecked. sshd may need 1-2 minutes after creation. To reset the password, run `--destroy` and then create again. Overrides: `PROJECT`, `AWS_PROFILE`, `AWS_REGION`. `make verify` tests it with `scripts/test-create-test-target.sh`.
+
+### Weak-config demo target
+
+`scripts/create-weak-target.sh` is the same disposable target (Amazon Linux 2023 `t3.micro`, nmap, SSH password login, same form values) plus three deliberate misconfigurations on stock packages, so a scan reports confirmed findings. No malware, backdoored builds or exploit code: only insecure settings.
+
+- tcp/80: nginx serving a world-readable `/.git/` directory (`autoindex on`) -> http-git.
+- tcp/8443: nginx HTTPS (self-signed) with a weak 1024-bit Diffie-Hellman group -> ssl-dh-params.
+- tcp/21: stock vsftpd with anonymous read-only access, passive mode off (no extra ports) -> ftp-anon.
+- tcp/22: sshd with password login, as in the scan test target.
+
+All four ports are allowed only from `security-app-internal-sg` (security group `security-app-weak-target-sg`), never from `0.0.0.0/0`. For demos only: create it, scan it, destroy it.
+
+```sh
+scripts/create-weak-target.sh            # create or reuse; prints the form values
+scripts/create-weak-target.sh --dry-run  # plan only
+scripts/create-weak-target.sh --destroy  # terminate the instance and delete its SG
+```
+
+user-data needs ~1-2 min after creation. Same overrides as above. `make verify` tests it with `scripts/test-create-weak-target.sh`.
+
