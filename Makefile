@@ -13,6 +13,7 @@ verify:
 	bash scripts/test-create-test-target.sh
 	bash scripts/test-create-weak-target.sh
 	bash scripts/test-verify-stack.sh
+	bash scripts/test-localstack-init.sh
 	@for f in scripts/*.sh; do bash -n "$$f" || exit 1; done; echo "bash -n: OK"
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -x scripts/*.sh; else echo "shellcheck not installed: skipped"; fi
 	$(TF) fmt -check -recursive
