@@ -39,7 +39,7 @@ Out: service code, Terraform, `push-images.sh` (still passes an optional, now un
 |---|---|---|
 | LS-01 | `scripts/localstack-init.sh` + `scripts/test-localstack-init.sh` (RED first), wired into `make verify` | [x] |
 | LS-02 | Rework `docker-compose.yml`: LocalStack service with healthcheck, service env, drop RabbitMQ/BROKER/TLS; compose assertions in `check-paths.sh` (not in the init test, which belongs to LS-01) | [x] |
-| LS-03 | `START.md` section B rewritten for LocalStack | [ ] |
+| LS-03 | `START.md` section B rewritten for LocalStack | [x] |
 | LS-04 | Close the follow-up in `terraform-infra.md` | [ ] |
 
 ## Acceptance criteria
@@ -55,7 +55,7 @@ Out: service code, Terraform, `push-images.sh` (still passes an optional, now un
 
 ## Progress / Next step
 
-Status: LS-01 and LS-02 done. Next: LS-03 (START.md section B).
+Status: LS-01..LS-03 done. Next: LS-04 (close the follow-up).
 
 ## Evidence
 
@@ -77,3 +77,10 @@ Status: LS-01 and LS-02 done. Next: LS-03 (START.md section B).
 - Healthcheck: marker file written last by the init hook plus `/_localstack/health`; no dependency on the `/_localstack/init/ready` JSON, which reports completion even when a hook fails.
 - Removed: rabbitmq service, `BROKER_*` / `MS_NMAP_BROKER_*`, `SSL_CERT_FILE`, TLS volume, the nmap-service `tls` additional context (its Dockerfile no longer uses it). `check-paths.sh` no longer requires `broker/rabbitmq`.
 - Not changed (gap): `scripts/push-images.sh` still passes an optional `tls` build context when `broker/rabbitmq/tls` exists; the nmap Dockerfile ignores it. Left alone with its test.
+
+### LS-03 evidence
+
+- Route: delegated writer. Docs only (neutral Spanish, same structure).
+- Section B now covers: LocalStack replacing RabbitMQ (no mention of the old broker left), what the init script creates (topic/queue/DLQ table, redrive 3, raw delivery, outcomes filter), `docker compose up --build`, health verification (`/_localstack/init/ready`, `awslocal` listings), inspecting queues from the container and from the host with `aws --endpoint-url http://localhost:4566`, purging a DLQ and redriving it. Prerequisites no longer mention lab certificates; subsections renumbered; gap 2 rewritten.
+- Commands in the doc were run live against LocalStack 4.4: `purge-queue` exit 0; `start-message-move-task` moved a DLQ message back (task `COMPLETED`, queue count 1).
+- Check: `rg -i 'rabbit|amqp|broker|lab-ca|management|5672|15672' START.md` returns nothing.
