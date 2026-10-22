@@ -91,4 +91,4 @@ Status: LS-01..LS-04 done. Next: user decides push / PR / merge into `develop`. 
 
 ## Review / delivery
 
-- Assessed tier and native review: not run by the writer (parent decides under the RDD policy). Branch not pushed.
+- Assessed tier: high (`review assess --base-ref 37f9545 --committed-only`, 8 files / 528 lines, review_due=high_risk). Native review: declined (user policy: only TF-10/14/16 permission or secret tasks are reviewed). Branch not pushed.
