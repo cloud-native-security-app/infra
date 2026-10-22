@@ -38,7 +38,7 @@ Out: service code, Terraform, `push-images.sh` (still passes an optional, now un
 | ID | Task | Done |
 |---|---|---|
 | LS-01 | `scripts/localstack-init.sh` + `scripts/test-localstack-init.sh` (RED first), wired into `make verify` | [x] |
-| LS-02 | Rework `docker-compose.yml`: LocalStack service with healthcheck, service env, drop RabbitMQ/BROKER/TLS; compose assertions in the test, `check-paths.sh` updated | [ ] |
+| LS-02 | Rework `docker-compose.yml`: LocalStack service with healthcheck, service env, drop RabbitMQ/BROKER/TLS; compose assertions in `check-paths.sh` (not in the init test, which belongs to LS-01) | [x] |
 | LS-03 | `START.md` section B rewritten for LocalStack | [ ] |
 | LS-04 | Close the follow-up in `terraform-infra.md` | [ ] |
 
@@ -55,7 +55,7 @@ Out: service code, Terraform, `push-images.sh` (still passes an optional, now un
 
 ## Progress / Next step
 
-Status: LS-01 done. Next: LS-02 (compose rework).
+Status: LS-01 and LS-02 done. Next: LS-03 (START.md section B).
 
 ## Evidence
 
@@ -66,3 +66,14 @@ Status: LS-01 done. Next: LS-02 (compose rework).
 - GREEN: `test-localstack-init: OK` (3 topics, 6 queues, redrive `maxReceiveCount=3` on the 3 main queues only, 3 subscriptions with `RawMessageDelivery=true`, outcomes `FilterPolicy` only, requests visibility 970 = 10 + 900 + 60 and 30 for the others, custom timeouts honoured, second run issues the same commands, readiness marker written last and only on success). `shellcheck -x` clean.
 - Design: ARNs are deterministic (account `000000000000`, region `us-east-1`), so the script only reads back the subscription ARN. Attributes are applied with `set-queue-attributes` (create-queue fails on an existing queue with different attributes). DLQs keep default attributes, as in terraform.
 - Readiness: the script touches `/tmp/localstack-init.done` last (removed at start); the compose healthcheck (LS-02) checks it, so health means the topology exists.
+
+### LS-02 evidence
+
+- Route: delegated writer. TDD on.
+- RED: `bash scripts/check-paths.sh` with the new compose assertions failed against the old compose: `FAIL: compose still references RabbitMQ/AMQP/broker TLS`, `compose has no localstack service`, `localstack image is not pinned to 4.4`, `compose does not mount scripts/localstack-init.sh as a ready.d hook`, and `gateway|nmap-service does not wait for localstack to be healthy` / `has no AWS_ENDPOINT_URL pointing at localstack`.
+- GREEN: `check-paths: OK`; `docker compose config -q` exit 0; `make verify` exit 0 (52 terraform tests passed, shellcheck and tflint clean).
+- Live smoke (docker 29.7.2): `docker compose up -d localstack` became healthy after about 60 s; `sns list-topics` returned 3 topics, `sqs list-queues` 6 queues; requests queue had `VisibilityTimeout` 370 (10 + 300 + 60, compose passes 300) and `maxReceiveCount` 3; outcomes subscription had `RawMessageDelivery` true and the `scan.outcome.` filter. Re-running the hook was a no-op success. A publish with `routing_key=scan.outcome.done` reached `gateway-scan-outcomes` as a raw body; one with `routing_key=other` was filtered out. `docker compose down -v` cleaned up.
+- Endpoints: both services honour `AWS_ENDPOINT_URL` natively (own config constants), plus `AWS_REGION` and dummy `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Queue URLs use `http://localstack:4566/000000000000/<name>`.
+- Healthcheck: marker file written last by the init hook plus `/_localstack/health`; no dependency on the `/_localstack/init/ready` JSON, which reports completion even when a hook fails.
+- Removed: rabbitmq service, `BROKER_*` / `MS_NMAP_BROKER_*`, `SSL_CERT_FILE`, TLS volume, the nmap-service `tls` additional context (its Dockerfile no longer uses it). `check-paths.sh` no longer requires `broker/rabbitmq`.
+- Not changed (gap): `scripts/push-images.sh` still passes an optional `tls` build context when `broker/rabbitmq/tls` exists; the nmap Dockerfile ignores it. Left alone with its test.

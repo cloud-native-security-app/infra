@@ -6,7 +6,7 @@ set -euo pipefail
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICES_ROOT="${SERVICES_ROOT:-$(cd "$INFRA_DIR/.." && pwd)}"
 COMPOSE_FILE="$INFRA_DIR/docker-compose.yml"
-SERVICE_DIRS=(user-service nmap-service gateway front broker/rabbitmq)
+SERVICE_DIRS=(user-service nmap-service gateway front)
 
 fail=0
 err() { echo "FAIL: $*" >&2; fail=1; }
@@ -41,6 +41,20 @@ rg -q 'SERVICES_ROOT="\$\{SERVICES_ROOT:-' "$INFRA_DIR/scripts/push-images.sh" |
 if rg -n '^\s*cd |\s\./(user-service|nmap-service|gateway|front|broker)' "$INFRA_DIR/scripts/push-images.sh" >&2; then
   err "push-images.sh still uses cwd-relative service paths"
 fi
+
+# (b2) compose messaging is LocalStack (SNS + SQS); RabbitMQ and AMQP are retired.
+if rg -n -i 'rabbitmq|amqp|BROKER_|broker/|SSL_CERT_FILE' "$COMPOSE_FILE" >&2; then
+  err "compose still references RabbitMQ/AMQP/broker TLS"
+fi
+rg -q '^  localstack:' "$COMPOSE_FILE" || err "compose has no localstack service"
+rg -q 'localstack/localstack:4\.4' "$COMPOSE_FILE" || err "localstack image is not pinned to 4.4"
+rg -q '/etc/localstack/init/ready\.d/.*localstack-init\.sh' "$COMPOSE_FILE" || err "compose does not mount scripts/localstack-init.sh as a ready.d hook"
+for svc in gateway nmap-service; do
+  rg -U -q "^  $svc:\n(?:    .*\n|\n)*?      localstack:\n        condition: service_healthy" "$COMPOSE_FILE" \
+    || err "$svc does not wait for localstack to be healthy"
+  rg -U -q "^  $svc:\n(?:    .*\n|\n)*?      AWS_ENDPOINT_URL: \"?http://localstack:4566" "$COMPOSE_FILE" \
+    || err "$svc has no AWS_ENDPOINT_URL pointing at localstack"
+done
 
 # (c) the sibling service repos exist.
 for d in "${SERVICE_DIRS[@]}"; do

@@ -1,21 +1,29 @@
 services:
   # --- Dependencias de infraestructura ---------------------------------
 
-  rabbitmq:
-    image: rabbitmq:4.3.5-management
+  # SNS + SQS locales (reemplazan al broker anterior). El hook de init crea la misma
+  # topología que terraform/messaging.tf; el healthcheck solo pasa cuando el
+  # hook terminó (marca /tmp/localstack-init.done), así que `service_healthy`
+  # significa "topics y colas existen".
+  localstack:
+    image: localstack/localstack:4.4
     ports:
-      - "5672:5672"   # AMQP en claro — SOLO para esta prueba local (ver broker/rabbitmq/README.md)
-      - "5671:5671"   # AMQPS (TLS, cert autofirmado de laboratorio)
-      - "15672:15672" # UI de management
+      - "4566:4566"
+    environment:
+      SERVICES: sns,sqs
+      AWS_DEFAULT_REGION: us-east-1
+      # El hook calcula el visibility timeout de la cola de solicitudes con
+      # los mismos timeouts SSH que recibe nmap-service.
+      SCAN_SSH_CONNECT_TIMEOUT_SECS: "10"
+      SCAN_SSH_COMMAND_TIMEOUT_SECS: "${SCAN_SSH_COMMAND_TIMEOUT_SECS:-300}"
     volumes:
-      - ../broker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
-      - ../broker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ../broker/rabbitmq/tls:/etc/rabbitmq/tls:ro
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/localstack-init.sh:ro
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      test: ["CMD-SHELL", "test -f /tmp/localstack-init.done && curl -sf http://localhost:4566/_localstack/health >/dev/null"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 10s
 
   postgres:
     image: postgres:16-alpine
@@ -61,45 +69,36 @@ services:
       - "8081:8080"
 
   nmap-service:
-    build:
-      context: ../nmap-service
-      # Contexto adicional (BuildKit) para que el Dockerfile pueda alcanzar
-      # el CA de laboratorio del broker sin salirse de su contexto normal
-      # (../nmap-service) ni requerir copiarlo/duplicarlo a mano — ver
-      # `COPY --from=tls ...` en nmap-service/Dockerfile. El mismo mecanismo
-      # se usa en scripts/push-images.sh (`--build-context tls=...`).
-      additional_contexts:
-        tls: ../broker/rabbitmq/tls
+    build: ../nmap-service
     depends_on:
       mongo:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     environment:
       MS_NMAP_MONGO_URI: "mongodb://mongo:27017/?directConnection=true"
       MS_NMAP_MONGO_DB: db-nmap
       MS_NMAP_SSH_PORT: "22"
-      # Adaptador real de broker (feature broker_adapter): el cliente AMQPS
-      # siempre conecta por TLS, con el usuario del servicio (`ms-nmap`), la
-      # credencial y el vhost por separado — el endpoint es solo host:puerto.
-      # El cert del broker de laboratorio es autofirmado y el trust store
-      # nativo del proceso no confía en él, así que se monta la CA de
-      # laboratorio y se apunta `SSL_CERT_FILE` a ella (sólo para laboratorio;
-      # en producción no se fija y el endpoint apunta al CA real del despliegue).
-      # El resto de TLS de este proceso (Mongo es interno sin TLS aquí, NVD
-      # deshabilitado) no se ve afectado en este escenario.
-      MS_NMAP_BROKER_ENDPOINT: "amqps://rabbitmq:5671"
-      MS_NMAP_BROKER_CREDENTIAL: lab-only-not-a-real-secret-ms-nmap
-      MS_NMAP_BROKER_VHOST: security-app
-      SSL_CERT_FILE: /etc/rabbitmq-tls/ca_certificate.pem
       MS_NMAP_SSH_CONNECT_TIMEOUT_SECS: "10"
-      MS_NMAP_SSH_COMMAND_TIMEOUT_SECS: "300"
+      MS_NMAP_SSH_COMMAND_TIMEOUT_SECS: "${SCAN_SSH_COMMAND_TIMEOUT_SECS:-300}"
       MS_NMAP_NVD_ENRICHMENT_ENABLED: "false"
-    volumes:
-      - ../broker/rabbitmq/tls/ca_certificate.pem:/etc/rabbitmq-tls/ca_certificate.pem:ro
+      # Mensajería SNS + SQS contra LocalStack. `AWS_ENDPOINT_URL` redirige el
+      # SDK; las credenciales son ficticias (LocalStack no las valida). Las
+      # URLs/ARNs son estáticas: cuenta 000000000000, región us-east-1.
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      MS_NMAP_SCAN_REQUESTS_QUEUE_URL: "http://localstack:4566/000000000000/ms-nmap-scan-requests"
+      MS_NMAP_SCAN_REQUESTS_DLQ_URL: "http://localstack:4566/000000000000/ms-nmap-scan-requests-dlq"
+      MS_NMAP_SCAN_CANCELLATIONS_QUEUE_URL: "http://localstack:4566/000000000000/ms-nmap-scan-cancellations"
+      MS_NMAP_SCAN_CANCELLATIONS_DLQ_URL: "http://localstack:4566/000000000000/ms-nmap-scan-cancellations-dlq"
+      MS_NMAP_SCAN_OUTCOMES_TOPIC_ARN: "arn:aws:sns:us-east-1:000000000000:scan-outcomes"
 
   gateway:
     build: ../gateway
     depends_on:
-      rabbitmq:
+      localstack:
         condition: service_healthy
       user-service:
         condition: service_started
@@ -117,12 +116,15 @@ services:
       FRONT_BASE_URL: "http://localhost:8082"
       SESSION_SIGNING_KEY: dev-signing-key-not-for-prod
       SESSION_TTL_SECS: "3600"
-      # Plano (5672), no AMQPS (5671): el cert de RabbitMQ es autofirmado de
-      # laboratorio y el cliente AMQPS por defecto no confía en esa CA. El
-      # propio broker/rabbitmq/README.md documenta 5672 como el puerto para
-      # desarrollo/depuración local.
-      BROKER_AMQPS_URL: "amqp://gateway:lab-only-not-a-real-secret-gateway@rabbitmq:5672"
-      BROKER_VHOST: security-app
+      # Mensajería SNS + SQS contra LocalStack (ver el bloque de nmap-service).
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SCAN_REQUESTS_TOPIC_ARN: "arn:aws:sns:us-east-1:000000000000:scan-requests"
+      SCAN_CANCELLATIONS_TOPIC_ARN: "arn:aws:sns:us-east-1:000000000000:scan-cancellations"
+      GATEWAY_SCAN_OUTCOMES_QUEUE_URL: "http://localstack:4566/000000000000/gateway-scan-outcomes"
+      GATEWAY_SCAN_OUTCOMES_DLQ_URL: "http://localstack:4566/000000000000/gateway-scan-outcomes-dlq"
       MS_USUARIOS_BASE_URL: "http://user-service:8080"
       MS_USUARIOS_SHARED_SECRET: dev-shared-secret
       SCAN_SUBMISSION_RATE_LIMIT_MAX_REQUESTS: "5"
