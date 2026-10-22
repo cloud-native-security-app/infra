@@ -40,7 +40,7 @@ Out: service code, Terraform, `push-images.sh` (still passes an optional, now un
 | LS-01 | `scripts/localstack-init.sh` + `scripts/test-localstack-init.sh` (RED first), wired into `make verify` | [x] |
 | LS-02 | Rework `docker-compose.yml`: LocalStack service with healthcheck, service env, drop RabbitMQ/BROKER/TLS; compose assertions in `check-paths.sh` (not in the init test, which belongs to LS-01) | [x] |
 | LS-03 | `START.md` section B rewritten for LocalStack | [x] |
-| LS-04 | Close the follow-up in `terraform-infra.md` | [ ] |
+| LS-04 | Close the follow-up in `terraform-infra.md` | [x] |
 
 ## Acceptance criteria
 
@@ -55,7 +55,7 @@ Out: service code, Terraform, `push-images.sh` (still passes an optional, now un
 
 ## Progress / Next step
 
-Status: LS-01..LS-03 done. Next: LS-04 (close the follow-up).
+Status: LS-01..LS-04 done. Next: user decides push / PR / merge into `develop`. Optional: drop the unused `tls` build context from `scripts/push-images.sh` and its test.
 
 ## Evidence
 
@@ -84,3 +84,11 @@ Status: LS-01..LS-03 done. Next: LS-04 (close the follow-up).
 - Section B now covers: LocalStack replacing RabbitMQ (no mention of the old broker left), what the init script creates (topic/queue/DLQ table, redrive 3, raw delivery, outcomes filter), `docker compose up --build`, health verification (`/_localstack/init/ready`, `awslocal` listings), inspecting queues from the container and from the host with `aws --endpoint-url http://localhost:4566`, purging a DLQ and redriving it. Prerequisites no longer mention lab certificates; subsections renumbered; gap 2 rewritten.
 - Commands in the doc were run live against LocalStack 4.4: `purge-queue` exit 0; `start-message-move-task` moved a DLQ message back (task `COMPLETED`, queue count 1).
 - Check: `rg -i 'rabbit|amqp|broker|lab-ca|management|5672|15672' START.md` returns nothing.
+
+### LS-04 evidence
+
+- `terraform-infra.md` follow-up (1) struck through and pointed here. Docs only; structural readback.
+
+## Review / delivery
+
+- Assessed tier and native review: not run by the writer (parent decides under the RDD policy). Branch not pushed.
