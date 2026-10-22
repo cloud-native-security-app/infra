@@ -12,6 +12,8 @@ imágenes, cliente Google, verificación, pausa/resume, destroy) está en
 Resumen: `scripts/bootstrap-state-bucket.sh` -> `scripts/bootstrap-namespace.sh`
 -> `terraform -chdir=terraform apply` -> `scripts/push-images.sh` ->
 `scripts/set-google-oauth.sh` -> `scripts/verify-stack.sh`.
+Para probar un escaneo de punta a punta: `scripts/create-test-target.sh` (ver
+[Scan test target](terraform/README.md#scan-test-target)); `--destroy` al terminar.
 
 ### Google OAuth: pasos manuales (una sola vez)
 

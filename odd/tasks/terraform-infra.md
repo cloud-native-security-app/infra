@@ -306,3 +306,19 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - `make verify`: exit 0 (check-paths OK, all script tests OK, `bash -n` OK, terraform tests 52 passed).
 - Live evidence: `scripts/verify-stack.sh` 10/10 on 2026-10-19 after `scripts/push-images.sh gateway nmap-service` and a resume apply.
 - Follow-ups: (1) rework `docker-compose.yml` for LocalStack (SNS/SQS) instead of RabbitMQ; START.md section B still describes RabbitMQ. (2) Decide the rustls provider guard. (3) Optional `stopTimeout >= 30s` on the ECS task definitions. (4) A few test messages still cite legacy script names (`00-env.sh`, `06-alb.sh`) as history.
+
+## Scan test target (2026-10-20)
+
+- Route: delegated writer (offline only; fake `aws` on PATH, no real AWS call). Branch `feature/test_target`. Ports the deleted `deploy/aws/create-test-target-ec2.sh` to `scripts/create-test-target.sh` (+ `scripts/test-create-test-target.sh`, wired into `make verify`; docs in `terraform/README.md` and `START.md`).
+- RED: the test run before the script existed failed (exit 127 for the missing script plus the create-path assertions).
+- GREEN: `bash scripts/test-create-test-target.sh` prints `OK` after implementing; see the verification results of the parent run.
+- Behavior: create-or-reuse (running instance reused without resetting the password, stopped one started), `--destroy` (terminate, wait terminated, delete SG), `--dry-run`; STS precheck; every aws call carries `--profile` and `--region`; nothing stored under `deploy/aws/.state`.
+- Security change vs the legacy script: SSH ingress is `tcp/22` with `--source-group` of `${PROJECT}-internal-sg` (looked up by name; fails with "apply the Terraform stack first" if missing) instead of `0.0.0.0/0`. Scans use the private IP from the nmap-service tasks in the same VPC, so no public ingress is needed.
+
+## Weak-config target (2026-10-21)
+
+- Route: delegated writer (offline only; fake `aws` on PATH, no real AWS call). Branch `feature/weak_config_target` (off `feature/test_target`). Adds `scripts/create-weak-target.sh` + `scripts/test-create-weak-target.sh`, wired into `make verify`; docs in `terraform/README.md`.
+- RED: the test run before the script existed failed (exit 127 plus all create-path assertions).
+- GREEN: `bash scripts/test-create-weak-target.sh` prints `OK` after implementing.
+- Misconfigurations (stock packages, insecure settings only): (1) nginx HTTPS on 8443 with a 1024-bit DH group (`ssl_dhparam`) and HTTP on 80 exposing `/.git/` with `autoindex on`; (2) vsftpd with `anonymous_enable=YES`, `local_enable=NO`, `write_enable=NO`, passive off; (3) SSH password login as in the test target. SG `${PROJECT}-weak-target-sg` opens tcp 22, 21, 80, 8443 only from `${PROJECT}-internal-sg`.
+- Scan expectations: nmap-service MCF-01 surfaces http-git / http-trace / cookie-flags, and ssl-dh-params reports State VULNERABLE. ftp-anon needs the scan to also request that script (cross-repo follow-up in nmap-service).
