@@ -305,7 +305,7 @@ cd terraform && terraform init -backend-config=backend.hcl -backend-config="buck
 - References updated: Makefile (dropped `bash -n deploy/aws/*.sh`), `scripts/check-paths.sh` (compose checks kept; legacy script checks replaced by `push-images.sh` SERVICES_ROOT checks), comments in `push-images.sh`, `verify-stack.sh`, `set-google-oauth.sh`, `docker-compose.yml`, `terraform/*.tf`, `terraform/tests`, `terraform/README.md`. `START.md` now opens with the Terraform flow and the one-time Google OAuth console steps; the docker compose guide is kept as section B.
 - `make verify`: exit 0 (check-paths OK, all script tests OK, `bash -n` OK, terraform tests 52 passed).
 - Live evidence: `scripts/verify-stack.sh` 10/10 on 2026-10-19 after `scripts/push-images.sh gateway nmap-service` and a resume apply.
-- Follow-ups: (1) rework `docker-compose.yml` for LocalStack (SNS/SQS) instead of RabbitMQ; START.md section B still describes RabbitMQ. (2) Decide the rustls provider guard. (3) Optional `stopTimeout >= 30s` on the ECS task definitions. (4) A few test messages still cite legacy script names (`00-env.sh`, `06-alb.sh`) as history.
+- Follow-ups: (1) ~rework `docker-compose.yml` for LocalStack (SNS/SQS) instead of RabbitMQ; START.md section B still describes RabbitMQ~ done in `odd/tasks/localstack-compose.md` (branch `feature/localstack_compose`). (2) Decide the rustls provider guard. (3) Optional `stopTimeout >= 30s` on the ECS task definitions. (4) A few test messages still cite legacy script names (`00-env.sh`, `06-alb.sh`) as history.
 
 ## Scan test target (2026-10-20)
 
