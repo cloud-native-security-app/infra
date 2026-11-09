@@ -42,7 +42,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 
 ## Constraints
 
-- Learner Lab: every resource uses `LabRole`. Kinesis availability is UNVERIFIED (see KAP-00). If it is denied, keep the port and ship an SNS fan-out adapter instead.
+- Learner Lab: every resource uses `LabRole`. Kinesis Data Streams works from the lab CLI session (KAP-00, 2026-11-09); access as `LabRole` from an ECS task is still unverified (KAP-00b). If it is denied, keep the port and ship an SNS fan-out adapter instead.
 - Events never carry credentials, tokens, raw scan output, or message bodies.
 - Local runs use LocalStack 4.4 with `kinesis` enabled and the same stream name.
 - Artifacts in English; START.md in neutral Spanish. Conventional Commits, no attribution.
@@ -58,8 +58,9 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
-| KAP-00 | infra | Spike: create, describe, and delete a 1-shard stream in Learner Lab with LabRole; record result | none | [ ] blocked: needs a lab session |
-| KAP-01 | infra | `terraform/streaming.tf` stream + SSM name + ECS env wiring; `.tftest.hcl` (RED first) | KAP-00 | [ ] |
+| KAP-00 | infra | Spike: create, describe, put, get, and delete a 1-shard stream from the Learner Lab CLI session; record result. **Result 2026-11-09: YES.** `create-stream` reached `ACTIVE` with 1 open shard, `put-record` returned a sequence number, `get-records` (TRIM_HORIZON) returned the record, `delete-stream` succeeded. Gotcha: the local AWS CLI is v1, so `--cli-binary-format` is unknown and `--data` is sent as raw text. | none | [x] 2026-11-09 |
+| KAP-00b | infra | Spike: same put/get as `LabRole` from a Fargate task (MSG-02 pattern: `public.ecr.aws/aws-cli/aws-cli`, task and execution role `LabRole`); record result or fallback | KAP-00 | [ ] needs a lab session |
+| KAP-01 | infra | `terraform/streaming.tf` stream + SSM name + ECS env wiring; `.tftest.hcl` (RED first) | KAP-00b | [ ] |
 | KAP-02 | infra | LocalStack: enable `kinesis`, create `security-events` in the init script, extend its offline test; START.md section B | none | [ ] |
 | KAP-03 | broker | `security-event.schema.json` + valid/invalid examples tested in `broker/tests/`; decision record | none | [ ] |
 | KAP-04 | user-service | Migration `users.role` (`user`/`admin`), `ADMIN_BOOTSTRAP_EMAILS` idempotent bootstrap, role in profile response | none | [ ] |
@@ -97,6 +98,7 @@ KAP-02..KAP-08 do not need a lab session and can start now. Only KAP-01 and KAP-
 ## Progress
 
 - 2026-11-02: `v2` cut in all six repos; merged branches deleted. Plan written. KAP-00 blocked until a lab session is available.
+- 2026-11-09: KAP-00 passed from the lab CLI session. KAP-00b (LabRole from ECS) added; it gates KAP-01.
 
 ## Next step
 
