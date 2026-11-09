@@ -62,7 +62,8 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 | KAP-00b | infra | Spike: same put/get as `LabRole` from a Fargate task (MSG-02 pattern: `public.ecr.aws/aws-cli/aws-cli`, task and execution role `LabRole`); record result or fallback | KAP-00 | [ ] needs a lab session |
 | KAP-01 | infra | `terraform/streaming.tf` stream + SSM name + ECS env wiring; `.tftest.hcl` (RED first) | KAP-00b | [ ] |
 | KAP-02 | infra | LocalStack: enable `kinesis`, create `security-events` in the init script, extend its offline test; START.md section B | none | [ ] |
-| KAP-03 | broker | `security-event.schema.json` + valid/invalid examples tested in `broker/tests/`; decision record | none | [ ] |
+| KAP-02b | broker | Close the v2 leftover `odd/tasks/sqs-sns-migration.md` MSG-03..MSG-09 before adding the new contract: first reconcile each item against what infra already delivered (LocalStack compose, TF-10 topology) and tick what is covered with evidence; then finish the rest (contract, DLQ, and encryption tests on LocalStack; parameter hand-off; retire `rabbitmq/`, AMQP test code, and `lapin`/testcontainers-rabbitmq). Mark `amazon-mq-migration.md` as superseded | none | [ ] |
+| KAP-03 | broker | `security-event.schema.json` + valid/invalid examples tested in `broker/tests/`; decision record | KAP-02b | [ ] |
 | KAP-04 | user-service | Migration `users.role` (`user`/`admin`), `ADMIN_BOOTSTRAP_EMAILS` idempotent bootstrap, role in profile response | none | [ ] |
 | KAP-05 | gateway | Read role at login, `role` JWT claim, `require_admin` extractor (403), tests | KAP-04 | [ ] |
 | KAP-06 | gateway | `SecurityEventPublisher` port + Kinesis adapter; emit scan.requested/cancelled, auth, ratelimit, deadlettered | KAP-02, KAP-03 | [ ] |
@@ -83,6 +84,7 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 | KAP-00b | infra | `feature/kinesis_labrole_spike` |
 | KAP-01 | infra | `feature/kinesis_stream` |
 | KAP-02 | infra | `feature/localstack_kinesis` |
+| KAP-02b | broker | `feature/retire_rabbitmq` |
 | KAP-03 | broker | `feature/security_event_contract` |
 | KAP-04 | user-service | `feature/user_role` |
 | KAP-05 | gateway | `feature/admin_role_guard` |
@@ -118,7 +120,8 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 
 - 2026-11-02: `v2` cut in all six repos; merged branches deleted. Plan written. KAP-00 blocked until a lab session is available.
 - 2026-11-09: KAP-00 passed from the lab CLI session. KAP-00b (LabRole from ECS) added; it gates KAP-01.
+- 2026-11-09: KAP-02b added (user decision): close the broker MSG-03..MSG-09 leftover from v2 before KAP-03, so the new contract lands in a broker repo without RabbitMQ.
 
 ## Next step
 
-Start KAP-02 (LocalStack Kinesis) and KAP-03 (event contract), which do not need AWS.
+Start KAP-02b (broker cleanup), then KAP-03 (event contract); KAP-02 (LocalStack Kinesis) can run in parallel. None of them needs AWS.
