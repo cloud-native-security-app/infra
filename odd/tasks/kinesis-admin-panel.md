@@ -74,6 +74,25 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 
 KAP-02..KAP-08 do not need a lab session and can start now. Only KAP-01 and KAP-11 need AWS.
 
+## Branches
+
+Each task is developed on its own branch, cut from `origin/develop` in its repo, and merges back to `develop` through its own PR. This plan document lives on `feature/kinesis_admin_plan` only.
+
+| Task | Repo | Branch |
+|---|---|---|
+| KAP-00b | infra | `feature/kinesis_labrole_spike` |
+| KAP-01 | infra | `feature/kinesis_stream` |
+| KAP-02 | infra | `feature/localstack_kinesis` |
+| KAP-03 | broker | `feature/security_event_contract` |
+| KAP-04 | user-service | `feature/user_role` |
+| KAP-05 | gateway | `feature/admin_role_guard` |
+| KAP-06 | gateway | `feature/security_event_publisher` |
+| KAP-07 | nmap-service | `feature/security_event_publisher` |
+| KAP-08 | user-service | `feature/security_event_publisher` |
+| KAP-09 | gateway | `feature/admin_realtime_feed` |
+| KAP-10 | front | `feature/admin_panel` |
+| KAP-11 | infra | `feature/kinesis_e2e_deploy` |
+
 ## Admin panel (KAP-09/KAP-10) content
 
 - KPI tiles: scans in flight, completed and failed in the last 15 minutes, failure rate, active users, rate-limit hits.
