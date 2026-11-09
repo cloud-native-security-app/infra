@@ -23,6 +23,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 - SNS+SQS stays for commands (scan request and cancellation). Kinesis carries domain facts only. Kafka/MSK stays rejected (`broker/docs/decisions.md`).
 - Admin role is a `users.role` column in user-service (user decision 2026-11-02), bootstrapped from `ADMIN_BOOTSTRAP_EMAILS`. The gateway puts it in its JWT as a `role` claim.
 - The gateway consumes Kinesis directly with `GetShardIterator(LATEST)` + `GetRecords` per shard. No KCL and no extra service. Every gateway instance reads every event.
+- Stream name env var for all producers/consumer: `SECURITY_EVENTS_STREAM_NAME` (value `security-events`), already set in compose for gateway, nmap-service and user-service (KAP-02). user-service also got `AWS_REGION`, `AWS_ENDPOINT_URL` and dummy `test`/`test` credentials; it has no `depends_on: localstack` yet (add in KAP-08 if it needs the stream at boot).
 - Stream: PROVISIONED, 1 shard, 24h retention. Partition key: `scan_id`, else `actor_sub`.
 - Each producer depends on a `SecurityEventPublisher` port, with a Kinesis adapter and an in-memory adapter for tests. A Kinesis failure is logged and never fails the business operation.
 
@@ -62,7 +63,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 | KAP-00 | infra | Spike: create, describe, put, get, and delete a 1-shard stream from the Learner Lab CLI session; record result. **Result 2026-11-09: YES.** `create-stream` reached `ACTIVE` with 1 open shard, `put-record` returned a sequence number, `get-records` (TRIM_HORIZON) returned the record, `delete-stream` succeeded. Gotcha: the local AWS CLI is v1, so `--cli-binary-format` is unknown and `--data` is sent as raw text. | none | [x] 2026-11-09 |
 | KAP-00b | infra | Spike: same put/get as `LabRole` from a Fargate task (MSG-02 pattern: `public.ecr.aws/aws-cli/aws-cli`, task and execution role `LabRole`); record result or fallback | KAP-00 | [ ] needs a lab session |
 | KAP-01 | infra | `terraform/streaming.tf` stream + SSM name + ECS env wiring; `.tftest.hcl` (RED first) | KAP-00b | [ ] |
-| KAP-02 | infra | LocalStack: enable `kinesis`, create `security-events` in the init script, extend its offline test; START.md section B | none | [ ] |
+| KAP-02 | infra | LocalStack: enable `kinesis`, create `security-events` in the init script, extend its offline test; START.md section B. **Done 2026-11-09** on `feature/localstack_kinesis` (1106430 compose+init+test, START.md+plan commit follows; not pushed). RED: extended `scripts/test-localstack-init.sh` first, 12 FAIL lines (no create-stream, no kinesis in SERVICES, no env var). GREEN: `test-localstack-init: OK`. `make verify` exit 0, `docker compose config -q` OK. Live LocalStack 4.4: healthy, `describe-stream-summary` ACTIVE, PROVISIONED, 1 open shard, 24h; put-record/get-records round-trip OK. Review: no assessment run by the writer (policy: decline) | none | [x] 2026-11-09 |
 | KAP-02b | broker | Close the v2 leftover `odd/tasks/sqs-sns-migration.md` MSG-03..MSG-09 before adding the new contract: first reconcile each item against what infra already delivered (LocalStack compose, TF-10 topology) and tick what is covered with evidence; then finish the rest (contract, DLQ, and encryption tests on LocalStack; parameter hand-off; retire `rabbitmq/`, AMQP test code, and `lapin`/testcontainers-rabbitmq). Mark `amazon-mq-migration.md` as superseded. **Done 2026-11-09** on `feature/retire_rabbitmq` (0509ac1, 8c09e62, ee1aaa4, 1ff2fab; not pushed): MSG-03 ticked by reconciliation (infra LocalStack), MSG-04..07 LocalStack tests, MSG-08 offline parity test vs `../infra`, MSG-09 RabbitMQ retired (D-13). `make verify` exit 0. Review: assessed high, declined (user policy) | none | [x] 2026-11-09 |
 | KAP-03 | broker | `security-event.schema.json` + valid/invalid examples tested in `broker/tests/`; decision record | KAP-02b | [ ] |
 | KAP-04 | user-service | Migration `users.role` (`user`/`admin`), `ADMIN_BOOTSTRAP_EMAILS` idempotent bootstrap, role in profile response | none | [ ] |
@@ -121,8 +122,9 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 
 - 2026-11-02: `v2` cut in all six repos; merged branches deleted. Plan written. KAP-00 blocked until a lab session is available.
 - 2026-11-09: KAP-00 passed from the lab CLI session. KAP-00b (LabRole from ECS) added; it gates KAP-01.
+- 2026-11-09: KAP-02 done: LocalStack `kinesis`, stream `security-events` created by the init hook, env var wired in compose.
 - 2026-11-09: KAP-02b added (user decision): close the broker MSG-03..MSG-09 leftover from v2 before KAP-03, so the new contract lands in a broker repo without RabbitMQ.
 
 ## Next step
 
-KAP-02b and KAP-03 done (KAP-03 on broker `feature/security_event_contract`). Next: KAP-03 (event contract) and KAP-02 (LocalStack Kinesis), in parallel; neither needs AWS. Push and PR of `broker` `feature/retire_rabbitmq` are the user decision.
+KAP-02b, KAP-03 and KAP-02 done (KAP-02 on infra `feature/localstack_kinesis`, not pushed). Next: KAP-04 (user role) or the producers KAP-06/07/08, which can now read `SECURITY_EVENTS_STREAM_NAME` against LocalStack. Push and PR of `broker` `feature/retire_rabbitmq` are the user decision.

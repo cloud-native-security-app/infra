@@ -75,6 +75,11 @@ retención, que LocalStack no aplica; cuenta `000000000000`, región `us-east-1`
 | `scan-cancellations` | `ms-nmap-scan-cancellations` | visibility timeout 30 s |
 | `scan-outcomes` | `gateway-scan-outcomes` | visibility timeout 30 s; filtro `routing_key` con prefijo `scan.outcome.` |
 
+Además crea el stream de Kinesis `security-events` (modo provisionado, 1 shard,
+retención de 24 h, igual que lo hará Terraform). Es el canal de eventos de
+dominio; SNS + SQS sigue siendo el canal de comandos. `gateway`, `nmap-service`
+y `user-service` reciben el nombre en `SECURITY_EVENTS_STREAM_NAME`.
+
 Cada cola tiene su DLQ `<nombre>-dlq` (redrive tras 3 recepciones,
 `maxReceiveCount=3`) y cada suscripción usa `RawMessageDelivery=true`. El script
 es idempotente: se puede volver a ejecutar sin efectos secundarios.
@@ -92,6 +97,7 @@ Para dejarlo en background: `docker compose up --build -d`, y ver logs con
 curl -s http://localhost:4566/_localstack/init/ready
 docker compose exec localstack awslocal sns list-topics     # 3 topics
 docker compose exec localstack awslocal sqs list-queues     # 6 colas (3 + 3 DLQ)
+docker compose exec localstack awslocal kinesis describe-stream-summary --stream-name security-events  # ACTIVE, 1 shard abierto
 
 # user-service
 curl -i http://localhost:8081/health          # 200 si Postgres responde
@@ -113,6 +119,11 @@ revisa que `localstack` esté `healthy` (`docker compose logs localstack`).
 
 Front: abre `http://localhost:8082` en el navegador — debe verse la pantalla
 de login.
+
+Si usas el AWS CLI del host en lugar de `awslocal`, agrega
+`--endpoint-url http://localhost:4566`. Con AWS CLI v1 no existe
+`--cli-binary-format`: `--data` se envía como texto plano (con v2 hay que
+pasar `--cli-binary-format raw-in-base64-out` para lo mismo).
 
 ### 3. Inspeccionar topics, colas y DLQs
 
