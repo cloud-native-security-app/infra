@@ -9,6 +9,7 @@
 #   LOCALSTACK_ACCOUNT_ID               account baked into the ARNs (default 000000000000)
 #   SCAN_SSH_CONNECT_TIMEOUT_SECS       nmap-service SSH connect timeout (default 10)
 #   SCAN_SSH_COMMAND_TIMEOUT_SECS       nmap-service SSH command timeout (default 900)
+#   KINESIS_WAIT_ATTEMPTS / KINESIS_WAIT_SLEEP_SECS   ACTIVE wait for the stream (default 30 x 1s)
 #   LOCALSTACK_INIT_MARKER              readiness marker, written last (default /tmp/localstack-init.done)
 set -euo pipefail
 
@@ -18,6 +19,9 @@ MARKER="${LOCALSTACK_INIT_MARKER:-/tmp/localstack-init.done}"
 CONNECT_TIMEOUT="${SCAN_SSH_CONNECT_TIMEOUT_SECS:-10}"
 COMMAND_TIMEOUT="${SCAN_SSH_COMMAND_TIMEOUT_SECS:-900}"
 MAX_RECEIVE_COUNT=3
+STREAM_NAME="security-events"
+WAIT_ATTEMPTS="${KINESIS_WAIT_ATTEMPTS:-30}"
+WAIT_SLEEP="${KINESIS_WAIT_SLEEP_SECS:-1}"
 
 # A scan never outlives its SSH timeouts (same formula as terraform/messaging.tf).
 REQUESTS_VISIBILITY=$((CONNECT_TIMEOUT + COMMAND_TIMEOUT + 60))
@@ -54,6 +58,26 @@ subscribe() {
   fi
 }
 
+# create_stream <name>: 1 shard; an existing stream (ResourceInUseException) is fine.
+# Then wait until it is ACTIVE so producers never race the creation.
+create_stream() {
+  local name="$1" out status i
+  if ! out="$(awslocal kinesis create-stream --stream-name "$name" --shard-count 1 2>&1)"; then
+    case "$out" in
+      *ResourceInUseException*) ;;
+      *) echo "localstack-init: create-stream failed: $out" >&2; return 1 ;;
+    esac
+  fi
+  for ((i = 0; i < WAIT_ATTEMPTS; i++)); do
+    status="$(awslocal kinesis describe-stream-summary --stream-name "$name" \
+      --query StreamDescriptionSummary.StreamStatus --output text)"
+    [ "$status" = ACTIVE ] && return 0
+    sleep "$WAIT_SLEEP"
+  done
+  echo "localstack-init: stream $name not ACTIVE (last status: $status)" >&2
+  return 1
+}
+
 for topic in scan-requests scan-cancellations scan-outcomes; do
   awslocal sns create-topic --name "$topic" >/dev/null
 done
@@ -72,5 +96,7 @@ subscribe scan-requests ms-nmap-scan-requests
 subscribe scan-cancellations ms-nmap-scan-cancellations
 subscribe scan-outcomes gateway-scan-outcomes '{"routing_key":[{"prefix":"scan.outcome."}]}'
 
+create_stream "$STREAM_NAME"
+
 touch "$MARKER"
-echo "localstack-init: topology ready (region $REGION, account $ACCOUNT)"
+echo "localstack-init: topology and stream ready (region $REGION, account $ACCOUNT)"
