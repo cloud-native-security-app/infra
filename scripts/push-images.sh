@@ -80,12 +80,6 @@ for svc in "${SELECTED[@]}"; do
       [ -n "$GATEWAY_URL" ] || die "terraform has no gateway_public_url output"
       # Vite bakes the gateway URL into the bundle and the nginx CSP at build time.
       build+=(--build-arg "VITE_GATEWAY_BASE_URL=$GATEWAY_URL") ;;
-    nmap-service)
-      # The Dockerfile still bakes the lab RabbitMQ CA from this extra context.
-      # Drop once MSG-NM removes the CA.
-      if [ -d "$SERVICES_ROOT/broker/rabbitmq/tls" ]; then
-        build+=(--build-context "tls=$SERVICES_ROOT/broker/rabbitmq/tls")
-      fi ;;
   esac
   build+=(-t "$url:latest" "$SERVICES_ROOT/$svc")
   run "${build[@]}"

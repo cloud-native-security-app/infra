@@ -44,6 +44,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 
 - Learner Lab: every resource uses `LabRole`. Kinesis Data Streams works from the lab CLI session (KAP-00, 2026-11-09); access as `LabRole` from an ECS task is still unverified (KAP-00b). If it is denied, keep the port and ship an SNS fan-out adapter instead.
 - Events never carry credentials, tokens, raw scan output, or message bodies.
+- No service depends on the broker crate, so each producer (KAP-06/07/08) and the consumer (KAP-09) keep their own envelope type. Their tests MUST validate every emitted or parsed event against `../broker/contracts/security-event.schema.json` and the examples in `../broker/contracts/examples/security-event/` (sibling-path pattern of broker `tests/topology_parity.rs`), so a schema change breaks their build instead of drifting silently.
 - Local runs use LocalStack 4.4 with `kinesis` enabled and the same stream name.
 - Artifacts in English; START.md in neutral Spanish. Conventional Commits, no attribution.
 
@@ -124,4 +125,4 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 
 ## Next step
 
-KAP-02b done. Next: KAP-03 (event contract) and KAP-02 (LocalStack Kinesis), in parallel; neither needs AWS. Push and PR of `broker` `feature/retire_rabbitmq` are the user decision.
+KAP-02b and KAP-03 done (KAP-03 on broker `feature/security_event_contract`). Next: KAP-03 (event contract) and KAP-02 (LocalStack Kinesis), in parallel; neither needs AWS. Push and PR of `broker` `feature/retire_rabbitmq` are the user decision.

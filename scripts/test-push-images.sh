@@ -90,12 +90,11 @@ done <"$WORK/ok.aws"
 rg -F -- "--build-arg VITE_GATEWAY_BASE_URL=$GW_URL" "$WORK/ok.docker" | rg -q "/front:latest" || err "ok: front build arg missing"
 [ "$(rg -c -F 'VITE_GATEWAY_BASE_URL' "$WORK/ok.docker")" = 1 ] || err "ok: build arg must be on front only"
 
-# --- nmap tls build context only when the directory exists
-rg -F -- "--build-context tls=$WORK/services/broker/rabbitmq/tls" "$WORK/ok.docker" | rg -q "nmap-service:latest" || err "ok: nmap tls build context missing"
-[ "$(rg -c -F 'build-context' "$WORK/ok.docker")" = 1 ] || err "ok: tls context must be on nmap only"
+# --- no extra build context: the RabbitMQ lab CA is retired, even if a stale broker/rabbitmq/tls is on disk
+rg -q -F 'build-context' "$WORK/ok.docker" && err "ok: an extra build context was passed (stale broker/rabbitmq/tls must be ignored)"
 run notls SERVICES_ROOT="$WORK/services-notls" -- nmap-service
 [ "$(rc notls)" = 0 ] || err "notls: exit $(rc notls)"
-rg -q -F 'build-context' "$WORK/notls.docker" && err "notls: tls context passed although the directory is missing"
+rg -q -F 'build-context' "$WORK/notls.docker" && err "notls: an extra build context was passed"
 
 # --- ECR login: password on stdin only, never argv, never printed
 rg -q -F "ecr get-login-password" "$WORK/ok.aws" || err "ok: ecr get-login-password not called"

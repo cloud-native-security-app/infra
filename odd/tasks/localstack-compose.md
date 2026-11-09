@@ -55,7 +55,7 @@ Out: service code, Terraform, `push-images.sh` (still passes an optional, now un
 
 ## Progress / Next step
 
-Status: LS-01..LS-04 done. Next: user decides push / PR / merge into `develop`. Optional: drop the unused `tls` build context from `scripts/push-images.sh` and its test.
+Status: LS-01..LS-04 done. Next: user decides push / PR / merge into `develop`. The unused `tls` build context was dropped later (see the gap note below).
 
 ## Evidence
 
@@ -76,7 +76,7 @@ Status: LS-01..LS-04 done. Next: user decides push / PR / merge into `develop`. 
 - Endpoints: both services honour `AWS_ENDPOINT_URL` natively (own config constants), plus `AWS_REGION` and dummy `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Queue URLs use `http://localstack:4566/000000000000/<name>`.
 - Healthcheck: marker file written last by the init hook plus `/_localstack/health`; no dependency on the `/_localstack/init/ready` JSON, which reports completion even when a hook fails.
 - Removed: rabbitmq service, `BROKER_*` / `MS_NMAP_BROKER_*`, `SSL_CERT_FILE`, TLS volume, the nmap-service `tls` additional context (its Dockerfile no longer uses it). `check-paths.sh` no longer requires `broker/rabbitmq`.
-- Not changed (gap): `scripts/push-images.sh` still passes an optional `tls` build context when `broker/rabbitmq/tls` exists; the nmap Dockerfile ignores it. Left alone with its test.
+- Gap closed 2026-11-09 (branch `fix/drop_rabbitmq_tls_context`): `scripts/push-images.sh` no longer passes the `tls` build context, and `scripts/test-push-images.sh` asserts no extra build context even when a stale `broker/rabbitmq/tls` exists.
 
 ### LS-03 evidence
 
