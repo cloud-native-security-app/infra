@@ -1,16 +1,17 @@
 services:
   # --- Dependencias de infraestructura ---------------------------------
 
-  # SNS + SQS locales (reemplazan al broker anterior). El hook de init crea la misma
-  # topología que terraform/messaging.tf; el healthcheck solo pasa cuando el
+  # SNS + SQS locales (reemplazan al broker anterior) y el stream Kinesis
+  # `security-events`. El hook de init crea la misma topología que
+  # terraform/messaging.tf y el stream (1 shard); el healthcheck solo pasa cuando el
   # hook terminó (marca /tmp/localstack-init.done), así que `service_healthy`
-  # significa "topics y colas existen".
+  # significa "topics, colas y stream existen".
   localstack:
     image: localstack/localstack:4.4
     ports:
       - "4566:4566"
     environment:
-      SERVICES: sns,sqs
+      SERVICES: sns,sqs,kinesis
       AWS_DEFAULT_REGION: us-east-1
       # El hook calcula el visibility timeout de la cola de solicitudes con
       # los mismos timeouts SSH que recibe nmap-service.
@@ -65,6 +66,13 @@ services:
       # network_credentials_api): 32 bytes, hex de 64 caracteres — SOLO para
       # laboratorio, como el resto de secretos de este compose.
       CREDENTIALS_ENCRYPTION_KEY: "0707070707070707070707070707070707070707070707070707070707070707"
+      # Stream Kinesis de eventos de seguridad contra LocalStack (ver el bloque
+      # de nmap-service para endpoint y credenciales ficticias).
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SECURITY_EVENTS_STREAM_NAME: "security-events"
     ports:
       - "8081:8080"
 
@@ -94,6 +102,7 @@ services:
       MS_NMAP_SCAN_CANCELLATIONS_QUEUE_URL: "http://localstack:4566/000000000000/ms-nmap-scan-cancellations"
       MS_NMAP_SCAN_CANCELLATIONS_DLQ_URL: "http://localstack:4566/000000000000/ms-nmap-scan-cancellations-dlq"
       MS_NMAP_SCAN_OUTCOMES_TOPIC_ARN: "arn:aws:sns:us-east-1:000000000000:scan-outcomes"
+      SECURITY_EVENTS_STREAM_NAME: "security-events"
 
   gateway:
     build: ../gateway
@@ -129,6 +138,7 @@ services:
       MS_USUARIOS_SHARED_SECRET: dev-shared-secret
       SCAN_SUBMISSION_RATE_LIMIT_MAX_REQUESTS: "5"
       SCAN_SUBMISSION_RATE_LIMIT_WINDOW_SECS: "60"
+      SECURITY_EVENTS_STREAM_NAME: "security-events"
     ports:
       - "8080:8080"
 

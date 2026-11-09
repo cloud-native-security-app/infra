@@ -24,6 +24,25 @@ for a in "$@"; do
   prev="$a"
 done
 case "$1 $2" in
+  "kinesis create-stream" | "kinesis describe-stream-summary")
+    # Record whether the readiness marker already exists: it must not.
+    if [ -f "$LOCALSTACK_INIT_MARKER" ]; then echo "MARKER_BEFORE_KINESIS $1 $2" >>"$FAKE_AWSLOCAL_LOG"; fi
+    ;;&
+  "kinesis create-stream")
+    case "${FAKE_KINESIS_CREATE:-ok}" in
+      exists)
+        echo "An error occurred (ResourceInUseException) when calling the CreateStream operation: Stream security-events under account 000000000000 already exists." >&2
+        exit 254
+        ;;
+      fail)
+        echo "An error occurred (InternalFailure) when calling the CreateStream operation" >&2
+        exit 254
+        ;;
+    esac
+    ;;
+  "kinesis describe-stream-summary")
+    echo "${FAKE_KINESIS_STATUS:-ACTIVE}"
+    ;;
   "sqs create-queue") echo "http://localhost:4566/000000000000/$name" ;;
   "sns subscribe") echo "arn:aws:sns:us-east-1:000000000000:topic:sub-$RANDOM" ;;
 esac
@@ -103,7 +122,48 @@ PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$WORK/second.log" LOCALSTACK_INIT_MARK
   bash "$TARGET" >/dev/null 2>&1 || err "second run: nonzero exit"
 [ "$(wc -l <"$WORK/second.log")" = "$(wc -l <"$WORK/base.log")" ] || err "second run issued a different number of commands"
 
-# 9. readiness marker: written at the end, only on success
+# 9. Kinesis stream security-events: 1 shard, created idempotently, ACTIVE before the marker
+has "kinesis create-stream --stream-name security-events --shard-count 1" || err "kinesis stream not created with 1 shard"
+[ "$(count 'kinesis create-stream')" = 1 ] || err "expected 1 create-stream, got $(count 'kinesis create-stream')"
+has "kinesis describe-stream-summary --stream-name security-events" || err "stream status never checked"
+has "MARKER_BEFORE_KINESIS" && err "readiness marker existed while the stream was being created"
+
+# 9b. stream already exists (ResourceInUseException): tolerated
+LOG="$WORK/exists.log"
+: >"$LOG"
+PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$LOG" FAKE_KINESIS_CREATE=exists LOCALSTACK_INIT_MARKER="$WORK/exists.marker" \
+  bash "$TARGET" >/dev/null 2>&1 || err "existing stream: nonzero exit"
+[ -f "$WORK/exists.marker" ] || err "existing stream: marker not written"
+
+# 9c. any other create-stream failure fails the init and leaves no marker
+LOG="$WORK/kfail.log"
+: >"$LOG"
+rc=0
+PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$LOG" FAKE_KINESIS_CREATE=fail LOCALSTACK_INIT_MARKER="$WORK/kfail.marker" \
+  bash "$TARGET" >/dev/null 2>&1 || rc=$?
+[ "$rc" != 0 ] || err "create-stream failure: script exited 0"
+[ ! -f "$WORK/kfail.marker" ] || err "create-stream failure: marker written"
+
+# 9d. a stream that never becomes ACTIVE fails the init (short wait for the test)
+LOG="$WORK/creating.log"
+: >"$LOG"
+rc=0
+PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$LOG" FAKE_KINESIS_STATUS=CREATING KINESIS_WAIT_ATTEMPTS=3 KINESIS_WAIT_SLEEP_SECS=0 \
+  LOCALSTACK_INIT_MARKER="$WORK/creating.marker" bash "$TARGET" >/dev/null 2>&1 || rc=$?
+[ "$rc" != 0 ] || err "stream stuck CREATING: script exited 0"
+[ ! -f "$WORK/creating.marker" ] || err "stream stuck CREATING: marker written"
+
+# 9e. compose wiring: LocalStack enables kinesis; the three producers get the stream name
+COMPOSE="$SCRIPT_DIR/../docker-compose.yml"
+rg -q -- 'SERVICES: sns,sqs,kinesis' "$COMPOSE" || err "compose SERVICES does not include kinesis"
+[ "$(rg -c -- 'SECURITY_EVENTS_STREAM_NAME: "security-events"' "$COMPOSE" || echo 0)" = 3 ] \
+  || err "expected SECURITY_EVENTS_STREAM_NAME in gateway, nmap-service and user-service"
+for svc in user-service nmap-service gateway; do
+  awk -v s="  $svc:" '$0==s{f=1;next} /^  [a-z-]+:/{f=0} f' "$COMPOSE" | rg -q -- 'SECURITY_EVENTS_STREAM_NAME: "security-events"' \
+    || err "$svc lacks SECURITY_EVENTS_STREAM_NAME"
+done
+
+# 10. readiness marker: written at the end, only on success
 [ -f "$WORK/base.marker" ] || err "ready marker not written"
 cat >"$WORK/bin/awslocal-fail" <<'FAKE'
 #!/usr/bin/env bash
