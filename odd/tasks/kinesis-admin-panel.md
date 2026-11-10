@@ -126,8 +126,8 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 - 2026-11-09: KAP-02b added (user decision): close the broker MSG-03..MSG-09 leftover from v2 before KAP-03, so the new contract lands in a broker repo without RabbitMQ.
 - 2026-11-10: KAP-03, KAP-04 (with flaky-test fix) and KAP-05 merged to `develop`. KAP-05 review findings: R1-001 (no role revocation) and R4 (unknown role claim rejects the whole session) must be resolved in KAP-09 before admin routes are mounted.
 - 2026-11-10: KAP-00b passed: `LabRole` reads and writes Kinesis from a Fargate task. KAP-01 is unblocked.
-- 2026-11-10: KAP-01 done offline (not applied). Open gap: KMS server-side encryption with `alias/aws/kinesis` is not verified with `LabRole` in the Learner Lab. Spike before apply; fallback is `-var security_events_encryption=NONE`.
+- 2026-11-10: KAP-01 done offline (not applied). KMS gap closed the same day: the KAP-00b procedure repeated on a stream encrypted with `start-stream-encryption --encryption-type KMS --key-id alias/aws/kinesis` (status ACTIVE, EncryptionType KMS); the Fargate task as `assumed-role/LabRole` put and read back a record, exit code 0. All `kap01-kms-spike` resources deleted.
 
 ## Next step
 
-KAP-00 to KAP-05 done, KAP-01 done offline. Next: spike KMS with `LabRole` (open gap), then the producers KAP-06/07/08 against LocalStack. KAP-01 still needs its `terraform apply` in the lab (part of KAP-11).
+KAP-00 to KAP-05 done, KAP-01 done offline. KMS with `LabRole` verified. Next: the producers KAP-06/07/08 against LocalStack. KAP-01 still needs its `terraform apply` in the lab (part of KAP-11).

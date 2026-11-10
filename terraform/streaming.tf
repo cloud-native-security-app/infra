@@ -14,7 +14,7 @@ resource "aws_kinesis_stream" "security_events" {
   }
 
   # AWS-managed key only: the lab cannot create customer-managed keys or key policies.
-  # LabRole use of this key is unverified; set security_events_encryption = "NONE" if it fails.
+  # LabRole can write and read a stream encrypted with this key from Fargate (KMS spike, 2026-11-10).
   encryption_type = var.security_events_encryption
   kms_key_id      = var.security_events_encryption == "KMS" ? "alias/aws/kinesis" : null
 }
