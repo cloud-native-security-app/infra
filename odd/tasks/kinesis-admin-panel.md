@@ -43,7 +43,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 
 ## Constraints
 
-- Learner Lab: every resource uses `LabRole`. Kinesis Data Streams works from the lab CLI session (KAP-00, 2026-11-09); access as `LabRole` from an ECS task is still unverified (KAP-00b). If it is denied, keep the port and ship an SNS fan-out adapter instead.
+- Learner Lab: every resource uses `LabRole`. Kinesis Data Streams works from the lab CLI session (KAP-00, 2026-11-09); and as `LabRole` from an ECS Fargate task (KAP-00b, 2026-11-10). The SNS fan-out fallback is no longer needed.
 - Events never carry credentials, tokens, raw scan output, or message bodies.
 - No service depends on the broker crate, so each producer (KAP-06/07/08) and the consumer (KAP-09) keep their own envelope type. Their tests MUST validate every emitted or parsed event against `../broker/contracts/security-event.schema.json` and the examples in `../broker/contracts/examples/security-event/` (sibling-path pattern of broker `tests/topology_parity.rs`), so a schema change breaks their build instead of drifting silently.
 - Local runs use LocalStack 4.4 with `kinesis` enabled and the same stream name.
@@ -61,7 +61,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
 | KAP-00 | infra | Spike: create, describe, put, get, and delete a 1-shard stream from the Learner Lab CLI session; record result. **Result 2026-11-09: YES.** `create-stream` reached `ACTIVE` with 1 open shard, `put-record` returned a sequence number, `get-records` (TRIM_HORIZON) returned the record, `delete-stream` succeeded. Gotcha: the local AWS CLI is v1, so `--cli-binary-format` is unknown and `--data` is sent as raw text. | none | [x] 2026-11-09 |
-| KAP-00b | infra | Spike: same put/get as `LabRole` from a Fargate task (MSG-02 pattern: `public.ecr.aws/aws-cli/aws-cli`, task and execution role `LabRole`); record result or fallback | KAP-00 | [ ] needs a lab session |
+| KAP-00b | infra | Spike: same put/get as `LabRole` from a Fargate task (MSG-02 pattern: `public.ecr.aws/aws-cli/aws-cli`, task and execution role `LabRole`); record result or fallback. **Result 2026-11-10: YES.** A Fargate task (image `public.ecr.aws/aws-cli/aws-cli:latest`, task and execution role `LabRole`, default VPC with public IP, temporary cluster) ran as `assumed-role/LabRole`, `put-record` returned a sequence number, `get-records` (TRIM_HORIZON) read the record back, exit code 0. All `kap00b-spike` resources (stream, task definition, cluster, log group) deleted afterwards. Gotcha (same as MSG-02): the first `run-task` failed with "Unable to assume the service linked role"; a retry 20 s later succeeded. | KAP-00 | [x] 2026-11-10 |
 | KAP-01 | infra | `terraform/streaming.tf` stream + SSM name + ECS env wiring; `.tftest.hcl` (RED first) | KAP-00b | [ ] |
 | KAP-02 | infra | LocalStack: enable `kinesis`, create `security-events` in the init script, extend its offline test; START.md section B. **Done 2026-11-09** on `feature/localstack_kinesis` (1106430 compose+init+test, START.md+plan commit follows; not pushed). RED: extended `scripts/test-localstack-init.sh` first, 12 FAIL lines (no create-stream, no kinesis in SERVICES, no env var). GREEN: `test-localstack-init: OK`. `make verify` exit 0, `docker compose config -q` OK. Live LocalStack 4.4: healthy, `describe-stream-summary` ACTIVE, PROVISIONED, 1 open shard, 24h; put-record/get-records round-trip OK. Review: no assessment run by the writer (policy: decline) | none | [x] 2026-11-09 |
 | KAP-02b | broker | Close the v2 leftover `odd/tasks/sqs-sns-migration.md` MSG-03..MSG-09 before adding the new contract: first reconcile each item against what infra already delivered (LocalStack compose, TF-10 topology) and tick what is covered with evidence; then finish the rest (contract, DLQ, and encryption tests on LocalStack; parameter hand-off; retire `rabbitmq/`, AMQP test code, and `lapin`/testcontainers-rabbitmq). Mark `amazon-mq-migration.md` as superseded. **Done 2026-11-09** on `feature/retire_rabbitmq` (0509ac1, 8c09e62, ee1aaa4, 1ff2fab; not pushed): MSG-03 ticked by reconciliation (infra LocalStack), MSG-04..07 LocalStack tests, MSG-08 offline parity test vs `../infra`, MSG-09 RabbitMQ retired (D-13). `make verify` exit 0. Review: assessed high, declined (user policy) | none | [x] 2026-11-09 |
@@ -124,7 +124,9 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 - 2026-11-09: KAP-00 passed from the lab CLI session. KAP-00b (LabRole from ECS) added; it gates KAP-01.
 - 2026-11-09: KAP-02 done: LocalStack `kinesis`, stream `security-events` created by the init hook, env var wired in compose.
 - 2026-11-09: KAP-02b added (user decision): close the broker MSG-03..MSG-09 leftover from v2 before KAP-03, so the new contract lands in a broker repo without RabbitMQ.
+- 2026-11-10: KAP-03, KAP-04 (with flaky-test fix) and KAP-05 merged to `develop`. KAP-05 review findings: R1-001 (no role revocation) and R4 (unknown role claim rejects the whole session) must be resolved in KAP-09 before admin routes are mounted.
+- 2026-11-10: KAP-00b passed: `LabRole` reads and writes Kinesis from a Fargate task. KAP-01 is unblocked.
 
 ## Next step
 
-KAP-02b, KAP-03 and KAP-02 done (KAP-02 on infra `feature/localstack_kinesis`, not pushed). Next: KAP-04 (user role) or the producers KAP-06/07/08, which can now read `SECURITY_EVENTS_STREAM_NAME` against LocalStack. Push and PR of `broker` `feature/retire_rabbitmq` are the user decision.
+KAP-00 to KAP-05 done. Next: KAP-01 (Terraform stream, now unblocked) or the producers KAP-06/07/08 against LocalStack.
