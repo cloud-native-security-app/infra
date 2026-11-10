@@ -54,3 +54,14 @@ variable "ssh_command_timeout_secs" {
     error_message = "ssh_command_timeout_secs must be positive and keep connect + command + 60 within the 12-hour SQS visibility limit."
   }
 }
+
+variable "security_events_encryption" {
+  description = "Server-side encryption of the security-events Kinesis stream: KMS (AWS-managed key alias/aws/kinesis) or NONE."
+  type        = string
+  default     = "KMS"
+
+  validation {
+    condition     = contains(["KMS", "NONE"], var.security_events_encryption)
+    error_message = "security_events_encryption must be \"KMS\" or \"NONE\"."
+  }
+}

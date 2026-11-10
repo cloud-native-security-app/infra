@@ -157,3 +157,13 @@ output "service_names" {
   description = "All ECS service names in the cluster, sorted (for describe-services checks)."
   value       = sort(concat(keys(aws_ecs_service.data), keys(aws_ecs_service.app)))
 }
+
+output "security_events_stream_name" {
+  description = "Kinesis stream the services publish domain events to."
+  value       = aws_kinesis_stream.security_events.name
+}
+
+output "security_events_stream_arn" {
+  description = "ARN of the security-events Kinesis stream."
+  value       = aws_kinesis_stream.security_events.arn
+}
