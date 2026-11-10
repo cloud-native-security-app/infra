@@ -70,9 +70,10 @@ locals {
       service_connect = "publish"
       target_group    = null
       environment = {
-        HTTP_HOST = "0.0.0.0"
-        HTTP_PORT = "8080"
-        RUST_LOG  = "info,user_service=debug,tower_http=debug"
+        HTTP_HOST                   = "0.0.0.0"
+        HTTP_PORT                   = "8080"
+        RUST_LOG                    = "info,user_service=debug,tower_http=debug"
+        SECURITY_EVENTS_STREAM_NAME = aws_kinesis_stream.security_events.name
       }
       secrets = {
         DATABASE_URL               = aws_ssm_parameter.database_url.arn
@@ -100,6 +101,7 @@ locals {
         MS_NMAP_SCAN_OUTCOMES_TOPIC_ARN      = aws_sns_topic.scan["scan-outcomes"].arn
         MS_NMAP_SCAN_REQUESTS_DLQ_URL        = aws_sqs_queue.dlq["ms-nmap-scan-requests"].id
         MS_NMAP_SCAN_CANCELLATIONS_DLQ_URL   = aws_sqs_queue.dlq["ms-nmap-scan-cancellations"].id
+        SECURITY_EVENTS_STREAM_NAME          = aws_kinesis_stream.security_events.name
       }
       secrets = {}
     }
@@ -121,6 +123,7 @@ locals {
         SCAN_CANCELLATIONS_TOPIC_ARN            = aws_sns_topic.scan["scan-cancellations"].arn
         GATEWAY_SCAN_OUTCOMES_QUEUE_URL         = aws_sqs_queue.consumer["gateway-scan-outcomes"].id
         GATEWAY_SCAN_OUTCOMES_DLQ_URL           = aws_sqs_queue.dlq["gateway-scan-outcomes"].id
+        SECURITY_EVENTS_STREAM_NAME             = aws_kinesis_stream.security_events.name
       }
       secrets = {
         MS_USUARIOS_SHARED_SECRET = aws_ssm_parameter.gateway_shared_secret.arn
@@ -148,7 +151,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = "256"
   memory                   = "512"
   execution_role_arn       = data.aws_iam_role.lab.arn
-  task_role_arn            = data.aws_iam_role.lab.arn # tasks call SQS, SNS and SSM with LabRole
+  task_role_arn            = data.aws_iam_role.lab.arn # tasks call SQS, SNS, Kinesis and SSM with LabRole
 
   container_definitions = jsonencode([merge(
     {

@@ -219,9 +219,10 @@ run "environment_matches_the_legacy_json" {
   assert {
     condition = (
       { for e in jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].environment : e.name => e.value } == {
-        HTTP_HOST = "0.0.0.0"
-        HTTP_PORT = "8080"
-        RUST_LOG  = "info,user_service=debug,tower_http=debug"
+        HTTP_HOST                   = "0.0.0.0"
+        HTTP_PORT                   = "8080"
+        RUST_LOG                    = "info,user_service=debug,tower_http=debug"
+        SECURITY_EVENTS_STREAM_NAME = "security-events"
       }
     )
     error_message = "user-service keeps its non-secret settings"
@@ -242,6 +243,7 @@ run "environment_matches_the_legacy_json" {
         SCAN_CANCELLATIONS_TOPIC_ARN            = aws_sns_topic.scan["scan-cancellations"].arn
         GATEWAY_SCAN_OUTCOMES_QUEUE_URL         = aws_sqs_queue.consumer["gateway-scan-outcomes"].id
         GATEWAY_SCAN_OUTCOMES_DLQ_URL           = aws_sqs_queue.dlq["gateway-scan-outcomes"].id
+        SECURITY_EVENTS_STREAM_NAME             = "security-events"
       }
     )
     error_message = "gateway env: legacy settings (OAuth redirect and front URL from the ALB) plus the SNS/SQS wiring"
@@ -262,6 +264,7 @@ run "environment_matches_the_legacy_json" {
         MS_NMAP_SCAN_OUTCOMES_TOPIC_ARN      = aws_sns_topic.scan["scan-outcomes"].arn
         MS_NMAP_SCAN_REQUESTS_DLQ_URL        = aws_sqs_queue.dlq["ms-nmap-scan-requests"].id
         MS_NMAP_SCAN_CANCELLATIONS_DLQ_URL   = aws_sqs_queue.dlq["ms-nmap-scan-cancellations"].id
+        SECURITY_EVENTS_STREAM_NAME          = "security-events"
       }
     )
     error_message = "nmap-service env: legacy settings plus the SNS/SQS wiring"
@@ -385,5 +388,20 @@ run "google_oauth_lives_only_in_ssm" {
   assert {
     condition     = length([for e in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].environment : e if startswith(e.name, "GOOGLE_CLIENT_")]) == 0
     error_message = "no Google OAuth value may be a plain environment variable"
+  }
+}
+
+run "security_events_stream_name_reaches_producers_and_consumer" {
+  command = apply
+
+  assert {
+    condition = alltrue([for k in ["gateway", "nmap-service", "user-service"] :
+      { for e in jsondecode(aws_ecs_task_definition.app[k].container_definitions)[0].environment : e.name => e.value }["SECURITY_EVENTS_STREAM_NAME"] == aws_kinesis_stream.security_events.name
+    ])
+    error_message = "gateway, nmap-service and user-service receive SECURITY_EVENTS_STREAM_NAME (KAP-01)"
+  }
+  assert {
+    condition     = length(try(jsondecode(aws_ecs_task_definition.app["front"].container_definitions)[0].environment, [])) == 0
+    error_message = "front never sees the stream"
   }
 }
