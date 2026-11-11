@@ -33,8 +33,8 @@ run "stream_is_provisioned_single_shard_24h" {
     error_message = "PROVISIONED mode (no on-demand cost surprises in the lab)"
   }
   assert {
-    condition     = aws_kinesis_stream.security_events.shard_count == 1 && aws_kinesis_stream.security_events.retention_period == 24
-    error_message = "1 shard and 24 h retention"
+    condition     = aws_kinesis_stream.security_events.shard_count == 1
+    error_message = "1 shard (retention stays at the AWS default: the lab SCP denies changing it)"
   }
 }
 

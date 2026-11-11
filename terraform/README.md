@@ -11,7 +11,7 @@ This flow replaced the former imperative `deploy/aws/` scripts (removed in TF-17
 1. Bootstrap the state bucket (once): `BUCKET="$(scripts/bootstrap-state-bucket.sh | tail -1)"` ([One-time bootstrap](#one-time-bootstrap)).
 2. Bootstrap the namespace: `export TF_VAR_namespace_arn="$(scripts/bootstrap-namespace.sh | tail -1)"` ([Cloud Map namespace](#cloud-map-namespace)).
 3. Init the backend: `terraform -chdir=terraform init -backend-config=backend.hcl -backend-config="bucket=$BUCKET"` ([Init the main root](#init-the-main-root)).
-4. Create the stack: `terraform -chdir=terraform apply`.
+4. Create the event stream and import it (once per lab; [Event stream](#event-stream)), then create the stack: `terraform -chdir=terraform apply`.
 5. Build and push the images, then redeploy: `scripts/push-images.sh` (`--dry-run`, `--no-redeploy`, or service names for a subset; until each service repo has CI).
 6. Set the Google client: register `gateway_public_url` + `/auth/callback` as the redirect URI in Google first, then `GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh` ([Google OAuth client](#google-oauth-client)).
 7. Check the stack: `scripts/verify-stack.sh` (gateway and front over HTTPS, ECS running vs desired; exits 1 on any failure).
@@ -75,11 +75,18 @@ The app services depend on the postgres and mongo services, so Terraform updates
 
 ## Event stream
 
-`streaming.tf` creates the Kinesis Data Stream `security-events` (PROVISIONED, 1 shard, 24 h retention). The gateway, nmap-service and user-service receive its name as the plain environment variable `SECURITY_EVENTS_STREAM_NAME` (the front does not). Outputs: `security_events_stream_name`, `security_events_stream_arn`.
+`streaming.tf` creates the Kinesis Data Stream `security-events` (PROVISIONED, 1 shard, AWS default 24 h retention; `retention_period` is left unset because the lab SCP denies `IncreaseStreamRetentionPeriod`). The gateway, nmap-service and user-service receive its name as the plain environment variable `SECURITY_EVENTS_STREAM_NAME` (the front does not). Outputs: `security_events_stream_name`, `security_events_stream_arn`.
 
 - No IAM resources: tasks run as `LabRole`, which reads and writes Kinesis from Fargate (verified in the KAP-00b spike).
 - Variable `security_events_encryption` (`KMS` default, or `NONE`) controls server-side encryption with the AWS-managed key `alias/aws/kinesis`. Verified 2026-11-10: a Fargate task running as `LabRole` writes and reads a stream encrypted with that key. `NONE` stays as an escape hatch.
 - The stream stays up while the stack is paused.
+- In the Learner Lab, create the stream with the AWS CLI and import it before the first `apply`. On create the aws provider always calls `IncreaseStreamRetentionPeriod` (its schema defaults `retention_period` to 24), and the lab SCP denies it; on update it calls it only when retention changes. There is no `import` block because `terraform test` mock providers cannot import.
+
+  ```sh
+  aws kinesis create-stream --stream-name security-events --shard-count 1
+  aws kinesis wait stream-exists --stream-name security-events
+  terraform -chdir=terraform import aws_kinesis_stream.security_events security-events
+  ```
 
 ## GitHub Actions credentials
 
