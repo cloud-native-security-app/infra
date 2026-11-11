@@ -24,7 +24,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 - Admin role is a `users.role` column in user-service (user decision 2026-11-02), bootstrapped from `ADMIN_BOOTSTRAP_EMAILS`. The gateway puts it in its JWT as a `role` claim.
 - The gateway consumes Kinesis directly with `GetShardIterator(LATEST)` + `GetRecords` per shard. No KCL and no extra service. Every gateway instance reads every event.
 - Stream name env var for all producers/consumer: `SECURITY_EVENTS_STREAM_NAME` (value `security-events`), already set in compose for gateway, nmap-service and user-service (KAP-02). user-service also got `AWS_REGION`, `AWS_ENDPOINT_URL` and dummy `test`/`test` credentials; it has no `depends_on: localstack` yet (add in KAP-08 if it needs the stream at boot).
-- Stream: PROVISIONED, 1 shard, 24h retention. Partition key: `scan_id`, else `actor_sub`.
+- Stream: PROVISIONED, 1 shard, 24h retention (AWS default; the lab SCP denies changing it, so in the lab the stream is created by CLI and imported, see `terraform/README.md`). Partition key: `scan_id`, else `actor_sub`.
 - Each producer depends on a `SecurityEventPublisher` port, with a Kinesis adapter and an in-memory adapter for tests. A Kinesis failure is logged and never fails the business operation.
 
 ## Event contract
@@ -65,15 +65,16 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 | KAP-01 | infra | `terraform/streaming.tf` stream + SSM name + ECS env wiring; `.tftest.hcl` (RED first). **Done 2026-11-10** on `feature/kinesis_stream` (38f3eec stream+outputs+tests, 2899c6d env wiring, docs commit docs; not pushed; no apply). Name goes as plain env var `SECURITY_EVENTS_STREAM_NAME` (same pattern as SQS/SNS), not SSM, because it is not a secret. No IAM resources (LabRole, KAP-00b). RED: new `streaming.tftest.hcl` + env run failed (resource not declared; 52 passed, 2 failed, 4 skipped). GREEN: `terraform test` 58 passed, 0 failed. `make verify` exit 0. Review: no assessment run by the writer | KAP-00b | [x] 2026-11-10 |
 | KAP-02 | infra | LocalStack: enable `kinesis`, create `security-events` in the init script, extend its offline test; START.md section B. **Done 2026-11-09** on `feature/localstack_kinesis` (1106430 compose+init+test, START.md+plan commit follows; not pushed). RED: extended `scripts/test-localstack-init.sh` first, 12 FAIL lines (no create-stream, no kinesis in SERVICES, no env var). GREEN: `test-localstack-init: OK`. `make verify` exit 0, `docker compose config -q` OK. Live LocalStack 4.4: healthy, `describe-stream-summary` ACTIVE, PROVISIONED, 1 open shard, 24h; put-record/get-records round-trip OK. Review: no assessment run by the writer (policy: decline) | none | [x] 2026-11-09 |
 | KAP-02b | broker | Close the v2 leftover `odd/tasks/sqs-sns-migration.md` MSG-03..MSG-09 before adding the new contract: first reconcile each item against what infra already delivered (LocalStack compose, TF-10 topology) and tick what is covered with evidence; then finish the rest (contract, DLQ, and encryption tests on LocalStack; parameter hand-off; retire `rabbitmq/`, AMQP test code, and `lapin`/testcontainers-rabbitmq). Mark `amazon-mq-migration.md` as superseded. **Done 2026-11-09** on `feature/retire_rabbitmq` (0509ac1, 8c09e62, ee1aaa4, 1ff2fab; not pushed): MSG-03 ticked by reconciliation (infra LocalStack), MSG-04..07 LocalStack tests, MSG-08 offline parity test vs `../infra`, MSG-09 RabbitMQ retired (D-13). `make verify` exit 0. Review: assessed high, declined (user policy) | none | [x] 2026-11-09 |
-| KAP-03 | broker | `security-event.schema.json` + valid/invalid examples tested in `broker/tests/`; decision record | KAP-02b | [ ] |
-| KAP-04 | user-service | Migration `users.role` (`user`/`admin`), `ADMIN_BOOTSTRAP_EMAILS` idempotent bootstrap, role in profile response | none | [ ] |
-| KAP-05 | gateway | Read role at login, `role` JWT claim, `require_admin` extractor (403), tests | KAP-04 | [ ] |
-| KAP-06 | gateway | `SecurityEventPublisher` port + Kinesis adapter; emit scan.requested/cancelled, auth, ratelimit, deadlettered | KAP-02, KAP-03 | [ ] |
-| KAP-07 | nmap-service | Port + Kinesis adapter; emit scan.started/completed/failed and finding.critical | KAP-02, KAP-03 | [ ] |
-| KAP-08 | user-service | Port + Kinesis adapter; emit audit.recorded | KAP-02, KAP-03 | [ ] |
-| KAP-09 | gateway | `src/kinesis.rs` consumer + `src/admin.rs` aggregator; `GET /api/admin/metrics` and SSE `GET /api/admin/events`; OpenAPI; LocalStack round-trip test | KAP-05, KAP-06 | [ ] |
-| KAP-10 | front | `features/admin/`: container (EventSource + reducer), KPI tiles, scans in flight, critical findings feed, event log; `/admin` route guarded by role; Playwright `e2e/admin-panel.spec.ts` | KAP-09 | [ ] |
-| KAP-11 | infra | End-to-end local check with compose; deploy and verify in Learner Lab; cut `v3` from `develop` | all | [ ] |
+| KAP-03 | broker | `security-event.schema.json` + valid/invalid examples tested in `broker/tests/`; decision record | KAP-02b | [x] merged to `develop` |
+| KAP-04 | user-service | Migration `users.role` (`user`/`admin`), `ADMIN_BOOTSTRAP_EMAILS` idempotent bootstrap, role in profile response | none | [x] merged to `develop` |
+| KAP-05 | gateway | Read role at login, `role` JWT claim, `require_admin` extractor (403), tests | KAP-04 | [x] merged to `develop` |
+| KAP-06 | gateway | `SecurityEventPublisher` port + Kinesis adapter; emit scan.requested/cancelled, auth, ratelimit, deadlettered | KAP-02, KAP-03 | [x] merged to `develop` |
+| KAP-07 | nmap-service | Port + Kinesis adapter; emit scan.started/completed/failed and finding.critical | KAP-02, KAP-03 | [x] merged to `develop` |
+| KAP-08 | user-service | Port + Kinesis adapter; emit audit.recorded | KAP-02, KAP-03 | [x] merged to `develop` |
+| KAP-09 | gateway | `src/kinesis.rs` consumer + `src/admin.rs` aggregator; `GET /api/admin/metrics` and SSE `GET /api/admin/events`; OpenAPI; LocalStack round-trip test | KAP-05, KAP-06 | [x] merged to `develop` |
+| KAP-10 | front | `features/admin/`: container (EventSource + reducer), KPI tiles, scans in flight, critical findings feed, event log; `/admin` route guarded by role; Playwright `e2e/admin-panel.spec.ts` | KAP-09 | [x] merged to `develop` |
+| KAP-07b | broker, nmap-service, gateway | Optional `port`/`protocol` on `vulnFinding` and nullable port in `finding.critical` (host-level findings) | KAP-07 | [x] merged to `develop` |
+| KAP-11 | infra | End-to-end local check with compose; deploy and verify in Learner Lab; cut `v3` from `develop` | all | [~] lab deploy verified 2026-11-11; local compose check replaced by the lab check; `v3` cut pending |
 
 KAP-02..KAP-08 do not need a lab session and can start now. Only KAP-01 and KAP-11 need AWS.
 
@@ -95,7 +96,7 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 | KAP-08 | user-service | `feature/security_event_publisher` |
 | KAP-09 | gateway | `feature/admin_realtime_feed` |
 | KAP-10 | front | `feature/admin_panel` |
-| KAP-11 | infra | `feature/kinesis_e2e_deploy` |
+| KAP-11 | infra | `fix/kinesis_retention_scp`, `fix/admin_bootstrap_emails` (fixes found by the deploy) |
 
 ## Admin panel (KAP-09/KAP-10) content
 
@@ -127,7 +128,11 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 - 2026-11-10: KAP-03, KAP-04 (with flaky-test fix) and KAP-05 merged to `develop`. KAP-05 review findings: R1-001 (no role revocation) and R4 (unknown role claim rejects the whole session) must be resolved in KAP-09 before admin routes are mounted.
 - 2026-11-10: KAP-00b passed: `LabRole` reads and writes Kinesis from a Fargate task. KAP-01 is unblocked.
 - 2026-11-10: KAP-01 done offline (not applied). KMS gap closed the same day: the KAP-00b procedure repeated on a stream encrypted with `start-stream-encryption --encryption-type KMS --key-id alias/aws/kinesis` (status ACTIVE, EncryptionType KMS); the Fargate task as `assumed-role/LabRole` put and read back a record, exit code 0. All `kap01-kms-spike` resources deleted.
+- 2026-11-10/11: KAP-06..KAP-10 and KAP-07b merged to `develop` in gateway, nmap-service, user-service, broker and front.
+- 2026-11-11: KAP-11 deploy into a fresh Learner Lab (the previous one ran out of credits): state bucket and namespace bootstrapped, `terraform apply`, `push-images.sh`, `set-google-oauth.sh`; `verify-stack.sh` 10 passed, 0 failed. All three producers log publishing to `security-events`. The user logged in as admin and checked `/admin` live. Two fixes found by the deploy, both merged to `develop`:
+  - `fix/kinesis_retention_scp` (infra #27): the lab SCP denies `kinesis:IncreaseStreamRetentionPeriod`, and aws provider 6.x calls it on every stream create (schema default 24). The stream is now created with the AWS CLI and imported; updates (KMS) work after import. The KAP-00b and KMS spikes missed it because they created the stream by CLI.
+  - `fix/admin_bootstrap_emails` (infra #28): Terraform did not pass `ADMIN_BOOTSTRAP_EMAILS` to user-service, so AWS had no admin. New list variable `admin_bootstrap_emails`, passed at apply time (`TF_VAR_admin_bootstrap_emails`); every later apply must pass it or the empty default revokes all admins.
 
 ## Next step
 
-KAP-00 to KAP-05 done, KAP-01 done offline. KMS with `LabRole` verified. Next: the producers KAP-06/07/08 against LocalStack. KAP-01 still needs its `terraform apply` in the lab (part of KAP-11).
+KAP-00 to KAP-10 done and deployed to the lab. Last step: cut `v3` from `develop` in all six repos, then release `develop` to `main` by PR. Follow-ups: event retry/outbox, panel gap after a gateway restart (consumer starts at LATEST), admin nav link stays until reload after a role loss.
