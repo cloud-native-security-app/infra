@@ -223,9 +223,10 @@ run "environment_matches_the_legacy_json" {
         HTTP_PORT                   = "8080"
         RUST_LOG                    = "info,user_service=debug,tower_http=debug"
         SECURITY_EVENTS_STREAM_NAME = "security-events"
+        ADMIN_BOOTSTRAP_EMAILS      = ""
       }
     )
-    error_message = "user-service keeps its non-secret settings"
+    error_message = "user-service keeps its non-secret settings (no admins unless admin_bootstrap_emails is set)"
   }
   assert {
     condition = (
@@ -404,4 +405,29 @@ run "security_events_stream_name_reaches_producers_and_consumer" {
     condition     = length(try(jsondecode(aws_ecs_task_definition.app["front"].container_definitions)[0].environment, [])) == 0
     error_message = "front never sees the stream"
   }
+}
+
+run "admin_bootstrap_emails_reach_user_service_comma_separated" {
+  command = apply
+
+  variables {
+    admin_bootstrap_emails = ["admin@example.com", "ops@example.com"]
+  }
+
+  assert {
+    condition = (
+      { for e in jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].environment : e.name => e.value }["ADMIN_BOOTSTRAP_EMAILS"] == "admin@example.com,ops@example.com"
+    )
+    error_message = "user-service receives the admin list as ADMIN_BOOTSTRAP_EMAILS, comma separated"
+  }
+}
+
+run "admin_bootstrap_emails_rejects_a_non_email" {
+  command = plan
+
+  variables {
+    admin_bootstrap_emails = ["not-an-email"]
+  }
+
+  expect_failures = [var.admin_bootstrap_emails]
 }

@@ -65,3 +65,14 @@ variable "security_events_encryption" {
     error_message = "security_events_encryption must be \"KMS\" or \"NONE\"."
   }
 }
+
+variable "admin_bootstrap_emails" {
+  description = "Emails of the admin users, passed to user-service as ADMIN_BOOTSTRAP_EMAILS. The list is authoritative: a user is admin if and only if their email is here (empty = no admins). Pass it at apply time (TF_VAR_admin_bootstrap_emails) instead of committing it."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for e in var.admin_bootstrap_emails : can(regex("^[^@\\s,]+@[^@\\s,]+\\.[^@\\s,]+$", e))])
+    error_message = "Every admin_bootstrap_emails entry must be an email address (no commas or spaces)."
+  }
+}
