@@ -5,9 +5,10 @@
 # environment variable SECURITY_EVENTS_STREAM_NAME (see app_services.tf).
 
 resource "aws_kinesis_stream" "security_events" {
-  name             = "security-events"
-  shard_count      = 1
-  retention_period = 24 # hours
+  name        = "security-events"
+  shard_count = 1
+  # Retention stays at the AWS default (24 h). Do not set retention_period: the provider then
+  # calls IncreaseStreamRetentionPeriod, which the Learner Lab SCP denies (even for 24).
 
   stream_mode_details {
     stream_mode = "PROVISIONED"

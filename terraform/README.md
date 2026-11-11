@@ -75,7 +75,7 @@ The app services depend on the postgres and mongo services, so Terraform updates
 
 ## Event stream
 
-`streaming.tf` creates the Kinesis Data Stream `security-events` (PROVISIONED, 1 shard, 24 h retention). The gateway, nmap-service and user-service receive its name as the plain environment variable `SECURITY_EVENTS_STREAM_NAME` (the front does not). Outputs: `security_events_stream_name`, `security_events_stream_arn`.
+`streaming.tf` creates the Kinesis Data Stream `security-events` (PROVISIONED, 1 shard, AWS default 24 h retention; `retention_period` is left unset because the lab SCP denies `IncreaseStreamRetentionPeriod`). The gateway, nmap-service and user-service receive its name as the plain environment variable `SECURITY_EVENTS_STREAM_NAME` (the front does not). Outputs: `security_events_stream_name`, `security_events_stream_arn`.
 
 - No IAM resources: tasks run as `LabRole`, which reads and writes Kinesis from Fargate (verified in the KAP-00b spike).
 - Variable `security_events_encryption` (`KMS` default, or `NONE`) controls server-side encryption with the AWS-managed key `alias/aws/kinesis`. Verified 2026-11-10: a Fargate task running as `LabRole` writes and reads a stream encrypted with that key. `NONE` stays as an escape hatch.
