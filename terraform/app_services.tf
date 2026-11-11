@@ -74,6 +74,8 @@ locals {
         HTTP_PORT                   = "8080"
         RUST_LOG                    = "info,user_service=debug,tower_http=debug"
         SECURITY_EVENTS_STREAM_NAME = aws_kinesis_stream.security_events.name
+        # Authoritative admin list: user-service grants and revokes the admin role from it.
+        ADMIN_BOOTSTRAP_EMAILS = join(",", var.admin_bootstrap_emails)
       }
       secrets = {
         DATABASE_URL               = aws_ssm_parameter.database_url.arn

@@ -109,6 +109,16 @@ GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
 
 Without those variables it reads the untracked local file `deploy/aws/.state/google_oauth.env` (left by the retired scripts; gitignored, never committed). Values reach `aws` through 0600 temp files, never argv, and are never printed. The Google redirect URI is the `gateway_public_url` output plus `/auth/callback`. `--dry-run` validates without writing. `make verify` tests it with `scripts/test-set-google-oauth.sh`.
 
+## Admin users
+
+`admin_bootstrap_emails` (list, default empty) reaches user-service as `ADMIN_BOOTSTRAP_EMAILS`, comma separated. The list is authoritative: user-service grants the `admin` role to those emails and revokes it from everyone else at startup and on profile provisioning, so an empty list means no admins and the `/admin` panel is unreachable. Pass it at apply time instead of committing it:
+
+```sh
+TF_VAR_admin_bootstrap_emails='["admin@example.com"]' terraform -chdir=terraform apply
+```
+
+Every later `apply` must pass the same list: without it the default empty list revokes every admin.
+
 ## Scan test target
 
 `scripts/create-test-target.sh` creates a disposable Amazon Linux 2023 `t3.micro` (nmap installed, SSH password login) to test the network-credentials scan end to end. It stays outside Terraform on purpose: it is a throwaway lab target, not part of the platform. Apply the Terraform stack first; SSH (tcp/22) is allowed only from `security-app-internal-sg`, never from `0.0.0.0/0`.
