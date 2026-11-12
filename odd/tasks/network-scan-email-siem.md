@@ -60,7 +60,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
 | NS-00 | infra | Local spike: a slim Debian image with `nmap` as a non-root user runs `nmap -sT -sV --script vuln -oX -` against a local target container; record that it needs no extra capability, duration, memory peak and XML shape. The Fargate run is checked in NS-06 | none | [x] 2026-11-12, results in Progress |
-| NS-01 | broker | `scan-request` contract: `scan_mode` (`ssh` default, `network`); `network_user` and `ssh_credentials_ref` required only when `ssh` (JSON Schema if/then); `scan.requested` event payload carries the mode; examples and tests | none | [ ] |
+| NS-01 | broker | `scan-request` contract: `scan_mode` (`ssh` default, `network`); `network_user` and `ssh_credentials_ref` required only when `ssh` (JSON Schema if/then); `scan.requested` event payload carries the mode; examples and tests | none | [x] 2026-11-12, broker `b6d478a` |
 | NS-02 | nmap-service | Local executor that runs nmap in the container (`-sT -sV --script vuln -T<n> -oX -`, no `-O`, no sudo); pipeline picks the executor by mode; network mode skips the patch check and records why; NVD enrichment runs in both modes; nmap in the image; parser reused; timeouts and reason codes (`target_unreachable`); unit tests and a testcontainers test against a local target | NS-01 | [ ] |
 | NS-03 | gateway | `POST /api/scans` accepts `mode`; `network` requires the `network_scan` permission re-validated against user-service (403 otherwise), skips credential resolution, rejects denylisted targets and, if `NETWORK_SCAN_ALLOWED_CIDRS` is set, targets outside it (422 with a reason); `ssh` unchanged; publishes the new contract; OpenAPI; tests | NS-01, NS-07 | [ ] |
 | NS-04 | front | Scan form: mode choice (SSH credentials or IP only) shown only when `/api/me` says the account has the `network_scan` permission; IP-only explains that patch state is not verified; mode shown in history and report; 403 and 422 messages; guards and contract-server mock; vitest and Playwright | NS-03 | [ ] |
@@ -141,6 +141,8 @@ Order:
 
 - 2026-11-12: the user chose NVD enrichment for both modes (see Decisions). NS-00 showed 512 MB is enough, so the memory change was dropped from NS-05.
 
+- 2026-11-12: NS-01 done (route: delegated writer, 11 files). broker `feature/scan_mode_contract` `b6d478a`: `scan_mode` enum `ssh|network`, default `ssh`; `allOf` if/then/else requires `network_user`, `ssh_credentials_ref`, `has_sudo` in ssh mode and forbids them in network mode (decision D-16); `scan.requested` payload gets optional `scan_mode`; examples `contracts/examples/scan-request/` with invalid cases. RED 5 failing, GREEN `cargo test --lib` 47 passed and `make verify` exit 0 (parent spot check: 47 passed). Review: whole-branch candidate declined per policy.
+
 ## Next step
 
-NS-01 in broker (`feature/scan_mode_contract`).
+NS-07 in user-service (`feature/network_scan_permission`).
