@@ -76,6 +76,24 @@ services:
     ports:
       - "8081:8080"
 
+  # Lado de lectura del stream de eventos: consume Kinesis (LocalStack) y solo
+  # responde al gateway, que envia el secreto compartido en X-Gateway-Secret.
+  events-service:
+    build: ../events-service
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: "8080"
+      GATEWAY_SHARED_SECRET: dev-events-shared-secret
+      # Endpoint y credenciales ficticias de LocalStack (ver nmap-service).
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SECURITY_EVENTS_STREAM_NAME: "security-events"
+
   nmap-service:
     build: ../nmap-service
     depends_on:
@@ -136,6 +154,9 @@ services:
       GATEWAY_SCAN_OUTCOMES_DLQ_URL: "http://localstack:4566/000000000000/gateway-scan-outcomes-dlq"
       MS_USUARIOS_BASE_URL: "http://user-service:8080"
       MS_USUARIOS_SHARED_SECRET: dev-shared-secret
+      # Lectura del stream de eventos (ES-03 hace el proxy; antes es inerte).
+      EVENTS_SERVICE_BASE_URL: "http://events-service:8080"
+      EVENTS_SERVICE_SHARED_SECRET: dev-events-shared-secret
       SCAN_SUBMISSION_RATE_LIMIT_MAX_REQUESTS: "5"
       SCAN_SUBMISSION_RATE_LIMIT_WINDOW_SECS: "60"
       SECURITY_EVENTS_STREAM_NAME: "security-events"

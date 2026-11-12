@@ -6,7 +6,7 @@ set -euo pipefail
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICES_ROOT="${SERVICES_ROOT:-$(cd "$INFRA_DIR/.." && pwd)}"
 COMPOSE_FILE="$INFRA_DIR/docker-compose.yml"
-SERVICE_DIRS=(user-service nmap-service gateway front)
+SERVICE_DIRS=(user-service events-service nmap-service gateway front)
 
 fail=0
 err() { echo "FAIL: $*" >&2; fail=1; }
