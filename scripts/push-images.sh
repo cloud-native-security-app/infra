@@ -4,7 +4,7 @@
 # repo has its own CI. Replaces the former imperative build/push scripts.
 #
 # Usage: scripts/push-images.sh [--dry-run] [--no-redeploy] [service...]
-#   service: any of user-service nmap-service gateway front (default: all four)
+#   service: any of user-service events-service nmap-service gateway front (default: all five)
 #   env: AWS_PROFILE (default learnerlab), AWS_REGION (default us-east-1),
 #        SERVICES_ROOT (default: parent directory of this repo; holds the service repos)
 #        TF_DATA_DIR is honored by terraform if the caller sets it.
@@ -19,7 +19,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AWS_PROFILE="${AWS_PROFILE:-learnerlab}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 SERVICES_ROOT="${SERVICES_ROOT:-$(cd "$REPO_ROOT/.." && pwd)}"
-ALL_SERVICES="user-service nmap-service gateway front"
+ALL_SERVICES="user-service events-service nmap-service gateway front"
 DRY_RUN=0
 REDEPLOY=1
 SELECTED=()

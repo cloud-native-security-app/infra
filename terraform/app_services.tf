@@ -12,6 +12,13 @@ resource "random_password" "gateway_shared_secret" {
   special = false
 }
 
+# Shared by events-service (GATEWAY_SHARED_SECRET) and gateway (EVENTS_SERVICE_SHARED_SECRET).
+# Separate from the user-service secret so each internal service can be rotated on its own.
+resource "random_password" "events_service_shared_secret" {
+  length  = 48
+  special = false
+}
+
 resource "random_id" "credentials_encryption_key" {
   byte_length = 32 # 32 bytes -> 64 hex characters, the key size user-service expects
 }
@@ -26,6 +33,12 @@ resource "aws_ssm_parameter" "gateway_shared_secret" {
   name  = "/${var.project}/gateway-shared-secret"
   type  = "SecureString"
   value = random_password.gateway_shared_secret.result
+}
+
+resource "aws_ssm_parameter" "events_service_shared_secret" {
+  name  = "/${var.project}/events-service/gateway-shared-secret"
+  type  = "SecureString"
+  value = random_password.events_service_shared_secret.result
 }
 
 resource "aws_ssm_parameter" "credentials_encryption_key" {
@@ -83,6 +96,23 @@ locals {
         CREDENTIALS_ENCRYPTION_KEY = aws_ssm_parameter.credentials_encryption_key.arn
       }
     }
+    # Internal read side of the security-events stream (Kinesis consumer, admin metrics and SSE).
+    # Only the gateway reaches it, through Service Connect, and must send the shared secret.
+    events-service = {
+      port            = 8080
+      service_connect = "publish"
+      target_group    = null
+      environment = {
+        HTTP_HOST                   = "0.0.0.0"
+        HTTP_PORT                   = "8080"
+        RUST_LOG                    = "info,events_service=debug,tower_http=debug"
+        SECURITY_EVENTS_STREAM_NAME = aws_kinesis_stream.security_events.name
+        AWS_REGION                  = var.region
+      }
+      secrets = {
+        GATEWAY_SHARED_SECRET = aws_ssm_parameter.events_service_shared_secret.arn
+      }
+    }
     # The gateway/nmap-service code still speaks AMQP until MSG-GW/MSG-NM land, so these two
     # start but will not process scans yet. Variable names follow the services' sqs-sns-adapter tasks.
     nmap-service = {
@@ -112,12 +142,14 @@ locals {
       service_connect = "client"
       target_group    = "gateway"
       environment = {
-        HTTP_HOST                               = "0.0.0.0"
-        HTTP_PORT                               = "8080"
-        GOOGLE_REDIRECT_URI                     = "https://${aws_lb.main.dns_name}:8080/auth/callback"
-        FRONT_BASE_URL                          = "https://${aws_lb.main.dns_name}"
-        SESSION_TTL_SECS                        = "3600"
-        MS_USUARIOS_BASE_URL                    = "http://user-service:8080"
+        HTTP_HOST            = "0.0.0.0"
+        HTTP_PORT            = "8080"
+        GOOGLE_REDIRECT_URI  = "https://${aws_lb.main.dns_name}:8080/auth/callback"
+        FRONT_BASE_URL       = "https://${aws_lb.main.dns_name}"
+        SESSION_TTL_SECS     = "3600"
+        MS_USUARIOS_BASE_URL = "http://user-service:8080"
+        # Harmless until the gateway proxies the admin feed to events-service (ES-03).
+        EVENTS_SERVICE_BASE_URL                 = "http://events-service:8080"
         SCAN_SUBMISSION_RATE_LIMIT_MAX_REQUESTS = "5"
         SCAN_SUBMISSION_RATE_LIMIT_WINDOW_SECS  = "60"
         AWS_REGION                              = var.region
@@ -128,10 +160,11 @@ locals {
         SECURITY_EVENTS_STREAM_NAME             = aws_kinesis_stream.security_events.name
       }
       secrets = {
-        MS_USUARIOS_SHARED_SECRET = aws_ssm_parameter.gateway_shared_secret.arn
-        SESSION_SIGNING_KEY       = aws_ssm_parameter.session_signing_key.arn
-        GOOGLE_CLIENT_ID          = aws_ssm_parameter.google_oauth["client-id"].arn
-        GOOGLE_CLIENT_SECRET      = aws_ssm_parameter.google_oauth["client-secret"].arn
+        MS_USUARIOS_SHARED_SECRET    = aws_ssm_parameter.gateway_shared_secret.arn
+        EVENTS_SERVICE_SHARED_SECRET = aws_ssm_parameter.events_service_shared_secret.arn
+        SESSION_SIGNING_KEY          = aws_ssm_parameter.session_signing_key.arn
+        GOOGLE_CLIENT_ID             = aws_ssm_parameter.google_oauth["client-id"].arn
+        GOOGLE_CLIENT_SECRET         = aws_ssm_parameter.google_oauth["client-secret"].arn
       }
     }
     front = {

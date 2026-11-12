@@ -154,14 +154,30 @@ PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$LOG" FAKE_KINESIS_STATUS=CREATING KIN
 [ ! -f "$WORK/creating.marker" ] || err "stream stuck CREATING: marker written"
 
 # 9e. compose wiring: LocalStack enables kinesis; the three producers get the stream name
+# (events-service, the consumer, is checked in 9f)
 COMPOSE="$SCRIPT_DIR/../docker-compose.yml"
 rg -q -- 'SERVICES: sns,sqs,kinesis' "$COMPOSE" || err "compose SERVICES does not include kinesis"
-[ "$(rg -c -- 'SECURITY_EVENTS_STREAM_NAME: "security-events"' "$COMPOSE" || echo 0)" = 3 ] \
-  || err "expected SECURITY_EVENTS_STREAM_NAME in gateway, nmap-service and user-service"
+[ "$(rg -c -- 'SECURITY_EVENTS_STREAM_NAME: "security-events"' "$COMPOSE" || echo 0)" = 4 ] \
+  || err "expected SECURITY_EVENTS_STREAM_NAME in gateway, nmap-service, user-service and events-service"
 for svc in user-service nmap-service gateway; do
   awk -v s="  $svc:" '$0==s{f=1;next} /^  [a-z-]+:/{f=0} f' "$COMPOSE" | rg -q -- 'SECURITY_EVENTS_STREAM_NAME: "security-events"' \
     || err "$svc lacks SECURITY_EVENTS_STREAM_NAME"
 done
+
+# 9f. events-service: reads the stream from LocalStack, gets a dev shared secret that
+# the gateway sends, and waits for LocalStack to be healthy
+ES="$(awk '$0=="  events-service:"{f=1;next} /^  [a-z-]+:/{f=0} f' "$COMPOSE")"
+GW="$(awk '$0=="  gateway:"{f=1;next} /^  [a-z-]+:/{f=0} f' "$COMPOSE")"
+[ -n "$ES" ] || err "compose has no events-service"
+for pat in 'build: ../events-service' 'SECURITY_EVENTS_STREAM_NAME: "security-events"' 'AWS_ENDPOINT_URL: "http://localstack:4566"' \
+  'AWS_REGION: us-east-1' 'AWS_ACCESS_KEY_ID: test' 'GATEWAY_SHARED_SECRET: dev-events-shared-secret' 'HTTP_PORT: "8080"'; do
+  printf '%s\n' "$ES" | rg -qF -- "$pat" || err "events-service lacks: $pat"
+done
+if ! { printf '%s\n' "$ES" | rg -q 'localstack:\s*$' && printf '%s\n' "$ES" | rg -q 'condition: service_healthy'; }; then
+  err "events-service does not wait for localstack to be healthy"
+fi
+printf '%s\n' "$GW" | rg -qF 'EVENTS_SERVICE_BASE_URL: "http://events-service:8080"' || err "gateway lacks EVENTS_SERVICE_BASE_URL"
+printf '%s\n' "$GW" | rg -qF 'EVENTS_SERVICE_SHARED_SECRET: dev-events-shared-secret' || err "gateway lacks EVENTS_SERVICE_SHARED_SECRET matching the events-service secret"
 
 # 10. readiness marker: written at the end, only on success
 [ -f "$WORK/base.marker" ] || err "ready marker not written"

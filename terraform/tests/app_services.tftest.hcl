@@ -58,6 +58,13 @@ override_resource {
 }
 
 override_resource {
+  target = aws_ssm_parameter.events_service_shared_secret
+  values = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/events-service/gateway-shared-secret"
+  }
+}
+
+override_resource {
   target = aws_ssm_parameter.credentials_encryption_key
   values = {
     arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/credentials-encryption-key"
@@ -83,7 +90,7 @@ run "secrets_are_generated_and_stored_in_ssm" {
 
   assert {
     condition = alltrue([
-      for p in [aws_ssm_parameter.gateway_shared_secret, aws_ssm_parameter.credentials_encryption_key, aws_ssm_parameter.session_signing_key, aws_ssm_parameter.database_url] :
+      for p in [aws_ssm_parameter.gateway_shared_secret, aws_ssm_parameter.events_service_shared_secret, aws_ssm_parameter.credentials_encryption_key, aws_ssm_parameter.session_signing_key, aws_ssm_parameter.database_url] :
       p.type == "SecureString"
     ])
     error_message = "every generated secret lives in an SSM SecureString"
@@ -91,6 +98,7 @@ run "secrets_are_generated_and_stored_in_ssm" {
   assert {
     condition = (
       aws_ssm_parameter.gateway_shared_secret.name == "/security-app/gateway-shared-secret" &&
+      aws_ssm_parameter.events_service_shared_secret.name == "/security-app/events-service/gateway-shared-secret" &&
       aws_ssm_parameter.credentials_encryption_key.name == "/security-app/user-service/credentials-encryption-key" &&
       aws_ssm_parameter.session_signing_key.name == "/security-app/gateway/session-signing-key" &&
       aws_ssm_parameter.database_url.name == "/security-app/user-service/database-url"
@@ -100,6 +108,14 @@ run "secrets_are_generated_and_stored_in_ssm" {
   assert {
     condition     = random_password.gateway_shared_secret.length == 48 && !random_password.gateway_shared_secret.special && aws_ssm_parameter.gateway_shared_secret.value == random_password.gateway_shared_secret.result
     error_message = "the gateway shared secret is 48 alphanumeric characters"
+  }
+  assert {
+    condition = (
+      random_password.events_service_shared_secret.length == 48 && !random_password.events_service_shared_secret.special &&
+      aws_ssm_parameter.events_service_shared_secret.value == random_password.events_service_shared_secret.result &&
+      random_password.events_service_shared_secret.result != random_password.gateway_shared_secret.result
+    )
+    error_message = "the events-service shared secret is its own 48 alphanumeric characters, distinct from the user-service one"
   }
   assert {
     condition     = random_password.session_signing_key.length == 64 && !random_password.session_signing_key.special && aws_ssm_parameter.session_signing_key.value == random_password.session_signing_key.result
@@ -119,7 +135,7 @@ run "task_definitions_are_complete_bootstrap_definitions" {
   command = apply
 
   assert {
-    condition     = toset(keys(aws_ecs_task_definition.app)) == toset(["user-service", "nmap-service", "gateway", "front"])
+    condition     = toset(keys(aws_ecs_task_definition.app)) == toset(["user-service", "events-service", "nmap-service", "gateway", "front"])
     error_message = "one task definition per application service"
   }
   assert {
@@ -141,7 +157,7 @@ run "task_definitions_are_complete_bootstrap_definitions" {
     error_message = "ECR :latest images, container named after the service, per-service log group"
   }
   assert {
-    condition = alltrue([for k, port in { user-service = 8080, gateway = 8080, front = 8080 } :
+    condition = alltrue([for k, port in { user-service = 8080, events-service = 8080, gateway = 8080, front = 8080 } :
       jsondecode(aws_ecs_task_definition.app[k].container_definitions)[0].portMappings == [{ name = k, containerPort = port, protocol = "tcp" }]
     ])
     error_message = "named port mappings as in the legacy JSON"
@@ -158,7 +174,7 @@ run "no_secret_in_plain_environment" {
   assert {
     condition = alltrue([for k, td in aws_ecs_task_definition.app :
       length([for e in try(jsondecode(td.container_definitions)[0].environment, []) :
-        e if contains(["GATEWAY_SHARED_SECRET", "CREDENTIALS_ENCRYPTION_KEY", "SESSION_SIGNING_KEY", "DATABASE_URL", "MS_USUARIOS_SHARED_SECRET"], e.name)
+        e if contains(["GATEWAY_SHARED_SECRET", "CREDENTIALS_ENCRYPTION_KEY", "SESSION_SIGNING_KEY", "DATABASE_URL", "MS_USUARIOS_SHARED_SECRET", "EVENTS_SERVICE_SHARED_SECRET"], e.name)
       ]) == 0
     ])
     error_message = "secret-bearing variables must come from `secrets`, never `environment`"
@@ -197,13 +213,29 @@ run "secrets_come_from_the_ssm_parameters" {
   assert {
     condition = (
       { for s in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].secrets : s.name => s.valueFrom } == {
-        MS_USUARIOS_SHARED_SECRET = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway-shared-secret"
-        SESSION_SIGNING_KEY       = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/session-signing-key"
-        GOOGLE_CLIENT_ID          = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-id"
-        GOOGLE_CLIENT_SECRET      = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-secret"
+        MS_USUARIOS_SHARED_SECRET    = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway-shared-secret"
+        EVENTS_SERVICE_SHARED_SECRET = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/events-service/gateway-shared-secret"
+        SESSION_SIGNING_KEY          = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/session-signing-key"
+        GOOGLE_CLIENT_ID             = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-id"
+        GOOGLE_CLIENT_SECRET         = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway/google-client-secret"
       }
     )
     error_message = "gateway shares the user-service's shared-secret parameter, has its own signing key, and reads Google OAuth from SSM"
+  }
+  assert {
+    condition = (
+      { for s in jsondecode(aws_ecs_task_definition.app["events-service"].container_definitions)[0].secrets : s.name => s.valueFrom } == {
+        GATEWAY_SHARED_SECRET = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/events-service/gateway-shared-secret"
+      }
+    )
+    error_message = "events-service reads only its shared secret from SSM"
+  }
+  assert {
+    condition = (
+      { for s in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].secrets : s.name => s.valueFrom }["EVENTS_SERVICE_SHARED_SECRET"] ==
+      { for s in jsondecode(aws_ecs_task_definition.app["events-service"].container_definitions)[0].secrets : s.name => s.valueFrom }["GATEWAY_SHARED_SECRET"]
+    )
+    error_message = "gateway and events-service share one parameter"
   }
   assert {
     condition = alltrue([for k in ["nmap-service", "front"] :
@@ -230,6 +262,18 @@ run "environment_matches_the_legacy_json" {
   }
   assert {
     condition = (
+      { for e in jsondecode(aws_ecs_task_definition.app["events-service"].container_definitions)[0].environment : e.name => e.value } == {
+        HTTP_HOST                   = "0.0.0.0"
+        HTTP_PORT                   = "8080"
+        RUST_LOG                    = "info,events_service=debug,tower_http=debug"
+        SECURITY_EVENTS_STREAM_NAME = "security-events"
+        AWS_REGION                  = "us-east-1"
+      }
+    )
+    error_message = "events-service env: HTTP binding, log filter, the stream it consumes and the region"
+  }
+  assert {
+    condition = (
       { for e in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].environment : e.name => e.value } == {
         HTTP_HOST                               = "0.0.0.0"
         HTTP_PORT                               = "8080"
@@ -237,6 +281,7 @@ run "environment_matches_the_legacy_json" {
         FRONT_BASE_URL                          = "https://security-app-alb-0.us-east-1.elb.amazonaws.com"
         SESSION_TTL_SECS                        = "3600"
         MS_USUARIOS_BASE_URL                    = "http://user-service:8080"
+        EVENTS_SERVICE_BASE_URL                 = "http://events-service:8080"
         SCAN_SUBMISSION_RATE_LIMIT_MAX_REQUESTS = "5"
         SCAN_SUBMISSION_RATE_LIMIT_WINDOW_SECS  = "60"
         AWS_REGION                              = "us-east-1"
@@ -297,7 +342,7 @@ run "services_run_the_bootstrap_definitions" {
   command = apply
 
   assert {
-    condition     = toset(keys(aws_ecs_service.app)) == toset(["user-service", "nmap-service", "gateway", "front"])
+    condition     = toset(keys(aws_ecs_service.app)) == toset(["user-service", "events-service", "nmap-service", "gateway", "front"])
     error_message = "one ECS service per application service"
   }
   assert {
@@ -324,6 +369,17 @@ run "service_connect_matches_the_scripts" {
       aws_ecs_service.app["user-service"].service_connect_configuration[0].service[0].client_alias[0].port == 8080
     )
     error_message = "user-service publishes user-service:8080"
+  }
+  assert {
+    condition = (
+      aws_ecs_service.app["events-service"].name == "events-service" &&
+      aws_ecs_service.app["events-service"].service_connect_configuration[0].enabled &&
+      aws_ecs_service.app["events-service"].service_connect_configuration[0].namespace == "arn:aws:servicediscovery:us-east-1:123456789012:namespace/ns-0" &&
+      aws_ecs_service.app["events-service"].service_connect_configuration[0].service[0].port_name == "events-service" &&
+      aws_ecs_service.app["events-service"].service_connect_configuration[0].service[0].client_alias[0].dns_name == "events-service" &&
+      aws_ecs_service.app["events-service"].service_connect_configuration[0].service[0].client_alias[0].port == 8080
+    )
+    error_message = "events-service publishes events-service:8080"
   }
   assert {
     condition = alltrue([for k in ["nmap-service", "gateway"] :
@@ -353,7 +409,7 @@ run "alb_services_attach_to_their_target_groups" {
     error_message = "gateway and front register 8080 in their target groups with a health check grace period"
   }
   assert {
-    condition     = alltrue([for k in ["user-service", "nmap-service"] : length(aws_ecs_service.app[k].load_balancer) == 0])
+    condition     = alltrue([for k in ["user-service", "events-service", "nmap-service"] : length(aws_ecs_service.app[k].load_balancer) == 0])
     error_message = "internal services are not behind the ALB"
   }
 }
@@ -396,10 +452,10 @@ run "security_events_stream_name_reaches_producers_and_consumer" {
   command = apply
 
   assert {
-    condition = alltrue([for k in ["gateway", "nmap-service", "user-service"] :
+    condition = alltrue([for k in ["gateway", "nmap-service", "user-service", "events-service"] :
       { for e in jsondecode(aws_ecs_task_definition.app[k].container_definitions)[0].environment : e.name => e.value }["SECURITY_EVENTS_STREAM_NAME"] == aws_kinesis_stream.security_events.name
     ])
-    error_message = "gateway, nmap-service and user-service receive SECURITY_EVENTS_STREAM_NAME (KAP-01)"
+    error_message = "gateway, nmap-service, user-service and events-service receive SECURITY_EVENTS_STREAM_NAME (KAP-01, ES-04)"
   }
   assert {
     condition     = length(try(jsondecode(aws_ecs_task_definition.app["front"].container_definitions)[0].environment, [])) == 0

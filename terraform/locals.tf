@@ -13,12 +13,12 @@ locals {
 
   # Application services only; no rabbitmq repo (replaced by SNS/SQS).
   ecr_repositories = {
-    for name in ["user-service", "nmap-service", "gateway", "front"] :
+    for name in ["user-service", "events-service", "nmap-service", "gateway", "front"] :
     name => "${var.project}/${name}"
   }
 
   task_families = {
-    for name in ["postgres", "mongo", "user-service", "nmap-service", "gateway", "front"] :
+    for name in ["postgres", "mongo", "user-service", "events-service", "nmap-service", "gateway", "front"] :
     name => "${var.project}-${name}"
   }
 

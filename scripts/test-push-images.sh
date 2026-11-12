@@ -17,6 +17,7 @@ cat >"$WORK/outputs.json" <<JSON
 {
   "ecr_repository_urls": {"value": {
     "user-service": "$REG/security-app/user-service",
+    "events-service": "$REG/security-app/events-service",
     "nmap-service": "$REG/security-app/nmap-service",
     "gateway": "$REG/security-app/gateway",
     "front": "$REG/security-app/front"}},
@@ -69,15 +70,15 @@ run() {
 }
 rc() { cat "$WORK/$1.rc"; }
 
-# --- happy path: all four services built, pushed and redeployed
+# --- happy path: all five services built, pushed and redeployed
 run ok --
 [ "$(rc ok)" = 0 ] || err "ok: exit $(rc ok): $(cat "$WORK/ok.err")"
-for svc in user-service nmap-service gateway front; do
+for svc in user-service events-service nmap-service gateway front; do
   rg -q -F -- "-t $REG/security-app/$svc:latest $WORK/services/$svc" "$WORK/ok.docker" || err "ok: $svc not built from SERVICES_ROOT with :latest"
   rg -q -x -F "push $REG/security-app/$svc:latest" "$WORK/ok.docker" || err "ok: $svc not pushed"
   rg -q -F "ecs update-service --cluster security-app-cluster-v2 --service $svc --force-new-deployment" "$WORK/ok.aws" || err "ok: $svc not redeployed"
 done
-[ "$(rg -c '^build ' "$WORK/ok.docker")" = 4 ] || err "ok: expected 4 builds"
+[ "$(rg -c '^build ' "$WORK/ok.docker")" = 5 ] || err "ok: expected 5 builds"
 rg -q -- "--profile learnerlab.*us-east-1.*sts get-caller-identity" "$WORK/ok.aws" || err "ok: STS check must pass profile and region"
 rg -q -F -- "-chdir=" "$WORK/ok.tf" || err "ok: terraform must be called with -chdir"
 rg -q -F "output -json" "$WORK/ok.tf" || err "ok: terraform output -json not used"
@@ -105,7 +106,7 @@ rg -q -F "$FAKE_PASSWORD" "$WORK/ok.docker" "$WORK/ok.aws" "$WORK/ok.out" "$WORK
 run subset -- gateway front
 [ "$(rc subset)" = 0 ] || err "subset: exit $(rc subset)"
 [ "$(rg -c '^build ' "$WORK/subset.docker")" = 2 ] || err "subset: expected 2 builds"
-rg -q "user-service|nmap-service" "$WORK/subset.docker" "$WORK/subset.aws" && err "subset: unselected service touched"
+rg -q "user-service|events-service|nmap-service" "$WORK/subset.docker" "$WORK/subset.aws" && err "subset: unselected service touched"
 [ "$(rg -c -F 'update-service' "$WORK/subset.aws")" = 2 ] || err "subset: expected 2 redeploys"
 run unknown -- bogus
 [ "$(rc unknown)" != 0 ] || err "unknown: unknown service must fail"
@@ -134,7 +135,7 @@ rg -q -F "$REG/security-app/front:latest" "$WORK/dry.out" "$WORK/dry.err" || err
 run noredeploy -- --no-redeploy
 [ "$(rc noredeploy)" = 0 ] || err "noredeploy: exit $(rc noredeploy)"
 rg -q -F 'update-service' "$WORK/noredeploy.aws" && err "noredeploy: must not redeploy"
-[ "$(rg -c '^push ' "$WORK/noredeploy.docker")" = 4 ] || err "noredeploy: images must still be pushed"
+[ "$(rg -c '^push ' "$WORK/noredeploy.docker")" = 5 ] || err "noredeploy: images must still be pushed"
 
 # --- overrides and TF_DATA_DIR pass-through
 run override AWS_PROFILE=other AWS_REGION=us-west-2 TF_DATA_DIR=/tmp/custom-tf -- user-service

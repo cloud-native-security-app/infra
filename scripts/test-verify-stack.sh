@@ -10,7 +10,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 GW="https://alb-test.us-east-1.elb.amazonaws.com:8080"
 FRONT="https://alb-test.us-east-1.elb.amazonaws.com"
-SERVICES="gateway front mongo nmap-service postgres user-service"
+SERVICES="events-service gateway front mongo nmap-service postgres user-service"
 
 mkdir -p "$WORK/bin"
 cat >"$WORK/outputs.json" <<JSON
@@ -19,7 +19,7 @@ cat >"$WORK/outputs.json" <<JSON
   "gateway_public_url": {"value": "$GW"},
   "front_public_url": {"value": "$FRONT"},
   "cluster_name": {"value": "security-app-cluster-v2"},
-  "service_names": {"value": ["gateway","front","mongo","nmap-service","postgres","user-service"]}
+  "service_names": {"value": ["events-service","gateway","front","mongo","nmap-service","postgres","user-service"]}
 }
 JSON
 
@@ -35,7 +35,7 @@ case "$*" in
   *"sts get-caller-identity"*) [ "${FAKE_STS_FAIL:-0}" = "1" ] && { echo "ExpiredToken" >&2; exit 254; }; echo "123456789012" ;;
   *"ecs describe-services"*)
     # name status running desired (tab separated, as --output text prints it)
-    for s in gateway front mongo nmap-service postgres user-service; do
+    for s in events-service gateway front mongo nmap-service postgres user-service; do
       run=1
       [ "${FAKE_ECS_BAD:-}" = "$s" ] && run=0
       [ "${FAKE_ECS_MISSING:-}" = "$s" ] && continue
@@ -108,6 +108,14 @@ rg -q '^\[FAIL\] .*gateway' "$WORK/bad.out" || err "bad: expected a FAIL line fo
 rg -q '^\[FAIL\] .*front' "$WORK/bad.out" && err "bad: healthy service flagged"
 rg -q -i 'filter-log-events' "$WORK/bad.out" "$WORK/bad.err" || err "bad: expected troubleshooting hints"
 rg -q -i 'rabbit|amqps' "$WORK/bad.out" "$WORK/bad.err" && err "bad: obsolete RabbitMQ hint"
+
+# --- events-service is internal: checked in ECS only (no curl), flagged when down, hinted as logs-only
+run events FAKE_ECS_BAD=events-service
+[ "$(rc events)" = 1 ] || err "events: must exit 1"
+rg -q '^\[FAIL\] .*events-service' "$WORK/events.out" || err "events: expected a FAIL line for events-service"
+rg -q 'events-service' <(rg 'describe-services' "$WORK/events.aws") || err "events: events-service not queried in ECS"
+rg -q -F 'events-service' "$WORK/ok.curl" "$WORK/events.curl" 2>/dev/null && err "events: events-service must not be probed over HTTP"
+rg -q 'events-service.*(no target group|logs only)' "$WORK/events.out" || err "events: expected the logs-only hint for events-service"
 
 # --- service missing from describe-services
 run missing FAKE_ECS_MISSING=mongo

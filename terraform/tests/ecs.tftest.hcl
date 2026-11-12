@@ -45,7 +45,7 @@ run "log_groups_per_service_with_three_day_retention" {
   command = apply
 
   assert {
-    condition     = toset(keys(aws_cloudwatch_log_group.service)) == toset(["postgres", "mongo", "user-service", "nmap-service", "gateway", "front"])
+    condition     = toset(keys(aws_cloudwatch_log_group.service)) == toset(["postgres", "mongo", "user-service", "events-service", "nmap-service", "gateway", "front"])
     error_message = "one log group per service, none for rabbitmq"
   }
   assert {
@@ -66,7 +66,7 @@ run "outputs_expose_cluster_and_namespace" {
     error_message = "cluster_arn must be exported"
   }
   assert {
-    condition     = output.log_group_names["gateway"] == "/ecs/security-app/gateway" && length(output.log_group_names) == 6
+    condition     = output.log_group_names["gateway"] == "/ecs/security-app/gateway" && length(output.log_group_names) == 7
     error_message = "log_group_names must map every service to its log group"
   }
 }

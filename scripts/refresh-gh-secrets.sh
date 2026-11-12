@@ -6,7 +6,7 @@
 # Usage: scripts/refresh-gh-secrets.sh [--dry-run]
 #   env: AWS_PROFILE (default learnerlab), AWS_REGION (default us-east-1),
 #        GH_OWNER (default cloud-native-security-app),
-#        REPOS (default "user-service nmap-service gateway front")
+#        REPOS (default "user-service events-service nmap-service gateway front")
 #   --dry-run: validate credentials and gh auth, list the targets, write nothing.
 #
 # Sets secrets AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN and the
@@ -17,7 +17,7 @@ set -euo pipefail
 AWS_PROFILE="${AWS_PROFILE:-learnerlab}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 GH_OWNER="${GH_OWNER:-cloud-native-security-app}"
-REPOS="${REPOS:-user-service nmap-service gateway front}"
+REPOS="${REPOS:-user-service events-service nmap-service gateway front}"
 DRY_RUN=0
 
 for arg in "$@"; do

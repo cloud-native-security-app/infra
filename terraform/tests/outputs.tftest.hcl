@@ -56,8 +56,8 @@ run "service_names_cover_the_stack" {
   command = apply
 
   assert {
-    condition     = output.service_names == tolist(["front", "gateway", "mongo", "nmap-service", "postgres", "user-service"])
-    error_message = "service_names must list all six ECS services, sorted"
+    condition     = output.service_names == tolist(["events-service", "front", "gateway", "mongo", "nmap-service", "postgres", "user-service"])
+    error_message = "service_names must list all seven ECS services, sorted"
   }
 }
 

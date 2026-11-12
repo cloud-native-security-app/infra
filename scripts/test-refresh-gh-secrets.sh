@@ -53,16 +53,16 @@ run() {
   set -e
 }
 
-# --- happy path: 4 default repos, 3 secrets + 1 variable each
+# --- happy path: 5 default repos, 3 secrets + 1 variable each
 run ok --
 [ "$(cat "$WORK/ok.rc")" = 0 ] || err "ok: exit $(cat "$WORK/ok.rc"): $(cat "$WORK/ok.err")"
-for repo in user-service nmap-service gateway front; do
+for repo in user-service events-service nmap-service gateway front; do
   for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
     rg -q -F "secret set $name --repo cloud-native-security-app/$repo" "$WORK/ok.gh" || err "ok: missing secret $name on $repo"
   done
   rg -q -F "variable set AWS_REGION --repo cloud-native-security-app/$repo" "$WORK/ok.gh" || err "ok: missing AWS_REGION variable on $repo"
 done
-[ "$(rg -c -F 'secret set' "$WORK/ok.gh")" = 12 ] || err "ok: expected 12 secret sets"
+[ "$(rg -c -F 'secret set' "$WORK/ok.gh")" = 15 ] || err "ok: expected 15 secret sets"
 rg -q -F "configure get aws_access_key_id --profile learnerlab" "$WORK/ok.aws" || err "ok: credentials must come from the learnerlab profile"
 rg -q "sts get-caller-identity.*--profile learnerlab" "$WORK/ok.aws" || err "ok: credentials must be validated with STS first"
 # values travel on stdin, never in argv
