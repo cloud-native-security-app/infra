@@ -114,7 +114,7 @@ run events FAKE_ECS_BAD=events-service
 [ "$(rc events)" = 1 ] || err "events: must exit 1"
 rg -q '^\[FAIL\] .*events-service' "$WORK/events.out" || err "events: expected a FAIL line for events-service"
 rg -q 'events-service' <(rg 'describe-services' "$WORK/events.aws") || err "events: events-service not queried in ECS"
-rg -q -F 'events-service' "$WORK/ok.curl" && err "events: events-service must not be probed over HTTP"
+rg -q -F 'events-service' "$WORK/ok.curl" "$WORK/events.curl" 2>/dev/null && err "events: events-service must not be probed over HTTP"
 rg -q 'events-service.*(no target group|logs only)' "$WORK/events.out" || err "events: expected the logs-only hint for events-service"
 
 # --- service missing from describe-services
