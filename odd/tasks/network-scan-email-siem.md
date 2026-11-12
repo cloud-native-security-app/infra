@@ -62,11 +62,12 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 | NS-00 | infra | Local spike: a slim Debian image with `nmap` as a non-root user runs `nmap -sT -sV --script vuln -oX -` against a local target container; record that it needs no extra capability, duration, memory peak and XML shape. The Fargate run is checked in NS-06 | none | [x] 2026-11-12, results in Progress |
 | NS-01 | broker | `scan-request` contract: `scan_mode` (`ssh` default, `network`); `network_user` and `ssh_credentials_ref` required only when `ssh` (JSON Schema if/then); `scan.requested` event payload carries the mode; examples and tests | none | [x] 2026-11-12, broker `b6d478a` |
 | NS-02 | nmap-service | Local executor that runs nmap in the container (`-sT -sV --script vuln -T<n> -oX -`, no `-O`, no sudo); pipeline picks the executor by mode; network mode skips the patch check and records why; NVD enrichment runs in both modes; nmap in the image; parser reused; timeouts and reason codes (`target_unreachable`); unit tests and a testcontainers test against a local target | NS-01 | [x] 2026-11-12, nmap-service `36195a2`, `65f3001` |
-| NS-03 | gateway | `POST /api/scans` accepts `mode`; `network` requires the `network_scan` permission re-validated against user-service (403 otherwise), skips credential resolution, rejects denylisted targets and, if `NETWORK_SCAN_ALLOWED_CIDRS` is set, targets outside it (422 with a reason); `ssh` unchanged; publishes the new contract; OpenAPI; tests | NS-01, NS-07 | [ ] |
+| NS-03 | gateway | `POST /api/scans` accepts `mode`; `network` requires the `network_scan` permission re-validated against user-service (403 otherwise), skips credential resolution, rejects denylisted targets and, if `NETWORK_SCAN_ALLOWED_CIDRS` is set, targets outside it (422 with a reason); `ssh` unchanged; publishes the new contract; OpenAPI; tests | NS-01, NS-07 | [x] 2026-11-12, gateway `b96a6dc`, `40d61fd` (+ review follow-up) |
 | NS-04 | front | Scan form: mode choice (SSH credentials or IP only) shown only when `/api/me` says the account has the `network_scan` permission; IP-only explains that patch state is not verified; mode shown in history and report; 403 and 422 messages; guards and contract-server mock; vitest and Playwright | NS-03 | [ ] |
 | NS-05 | infra | `network_scan_emails` variable (email list, validated like `admin_bootstrap_emails`) to user-service env; optional `network_scan_allowed_cidrs` (default empty) to the gateway env; nmap-service in its own security group (egress all, ingress allowed only into Mongo); NVD enrichment on for nmap-service (`MS_NMAP_NVD_ENRICHMENT_ENABLED=true`, `MS_NMAP_NVD_CACHE_TTL_SECS=86400`); `create-test-target.sh` and `create-weak-target.sh` open the target SG to the nmap-service SG; compose; tests and README | NS-00 | [ ] |
 | NS-06 | infra | Lab deploy and check: network scan of the weak target from the UI with an authorized account; a non-authorized account does not see the mode and gets 403 from the API; ssh scan still works; nmap-service cannot reach the gateway or Postgres | NS-02..NS-05, NS-07 | [ ] |
 | NS-07 | user-service | `network_scan` permission: migration (`users.can_network_scan`), bootstrap from `NETWORK_SCAN_EMAILS` (authoritative, idempotent), exposed in the profile the gateway reads and in `/api/me`; internal check endpoint for the gateway; tests | none | [x] 2026-11-12, user-service `1681928` |
+| NS-08 | user-service + gateway | Persist the scan mode in the scan history (user-service column and history payload; gateway sends it on register and reads it back) so `mode` survives a gateway restart. Added 2026-11-12: NS-03 keeps `mode` only in the in-memory `ScanOwnershipRegistry` | NS-03 | [ ] |
 
 ### Part 2: email report
 
@@ -90,7 +91,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 
 Order:
 
-1. NS-00 (spike), then NS-01, NS-07, NS-02, NS-03, NS-05, NS-04, NS-06.
+1. NS-00 (spike), then NS-01, NS-07, NS-02, NS-03, NS-08, NS-05, NS-04, NS-06.
 2. EM-01..EM-05 (independent of part 1; after open decision 2 and 3).
 3. SR-01..SR-05.
 
@@ -106,6 +107,7 @@ Order:
 | NS-05 | infra | `feature/network_scan` |
 | NS-06 | infra | lab check, no branch unless fixes are needed |
 | NS-07 | user-service | `feature/network_scan_permission` |
+| NS-08 | user-service, gateway | `feature/scan_history_mode` |
 | EM-01 | user-service | `feature/report_email_render` |
 | EM-02 | user-service | `feature/report_email_on_completion` |
 | EM-03 | gateway | `feature/report_email_status` |
@@ -148,6 +150,9 @@ Order:
 - 2026-11-12: NS-02 done (route: delegated writer, 19 files, +1414/-145; over the 400-line heuristic because the `ScanRequest` change touches every call site). nmap-service `feature/network_scan_executor` `36195a2` (domain `ScanAccess::Ssh|Network` with a contract-checked wire struct, `LocalNmapScanner` with argv `-sT -sV --script vuln -T<n> -oX - <ip>`, no shell, kill_on_drop, timeout `MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS` default 900; pipeline routes by mode, network skips patch_verify, enrichment in both) and `65f3001` (debian:bookworm-slim pinned by digest + nmap, uid 65532, 216 MB; ADR-19). New reason codes `target_unreachable`, `nmap_timeout`, `nmap_io_error` (slug pattern, no broker change). RED: compile errors; GREEN: `make verify` exit 0 incl. `local_scan` ignored test against nginx:1.18 (parent spot check: 288 passed). Review: high, declined (user policy, not a permission task).
   - Notes for later tasks: "patch state not verified" is not stored in the scan result (`scanResult` has `additionalProperties: false`); NS-03/NS-04 derive it from the request's `scan_mode`. No `-Pn`: a host that drops probes to 80/443 reads as `target_unreachable`; NS-05 opens the target SG to the nmap-service SG, so lab targets answer with RST. NS-05 sets `MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS` and keeps the SQS visibility timeout above it.
 
+- 2026-11-12: NS-03 done (route: delegated writer, 29 files, +1743/-79). gateway `feature/network_scan_mode` `b96a6dc`, `40d61fd`. `POST /api/scans {target, mode?}`; network mode checks `can_network_scan` on `GET /users/me` first (403 `network_scan_not_permitted`, 503 `network_scan_permission_unavailable`), skips credentials, denylist then optional `NETWORK_SCAN_ALLOWED_CIDRS` (422 `network_scan_target_rejected` + `reason`: `target_loopback|target_link_local|target_multicast|target_broadcast|target_unspecified|target_outside_allowed_ranges`); `/api/me` adds `can_network_scan`; `GET /api/scans` entries add `mode`; ssh payload unchanged; D-18. RED: compile errors; GREEN: `make verify` exit 0 (parent spot check: `network_scan_mode` 20 passed). Review: high, granted by the user, 4 lenses, approved and acknowledged. Advisories fixed in a follow-up commit: IPv6 metadata `fd00:ec2::254` not denied, IPv4-compatible canonicalization mismatch, index-based event test, implicit ssh in `register`. Advisories left: `/api/me` now calls user-service on every request (falls back to false); rollout order (deploy nmap-service before the gateway, NS-06).
+  - Gap: history `mode` is in memory only, so NS-08 was added. The front has hand-written types, guards and the contract-server mock, not an OpenAPI fixture (NS-04).
+
 ## Next step
 
-NS-03 in gateway (`feature/network_scan_mode`).
+Finish the NS-03 review follow-up commit, then NS-08.
