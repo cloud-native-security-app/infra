@@ -47,21 +47,23 @@ run "names_match_00_env" {
   }
   assert {
     condition = output.ecr_repositories == {
-      user-service = "security-app/user-service"
-      nmap-service = "security-app/nmap-service"
-      gateway      = "security-app/gateway"
-      front        = "security-app/front"
+      user-service   = "security-app/user-service"
+      events-service = "security-app/events-service"
+      nmap-service   = "security-app/nmap-service"
+      gateway        = "security-app/gateway"
+      front          = "security-app/front"
     }
     error_message = "ECR repos must be security-app/<name> and exclude rabbitmq"
   }
   assert {
     condition = output.task_families == {
-      postgres     = "security-app-postgres"
-      mongo        = "security-app-mongo"
-      user-service = "security-app-user-service"
-      nmap-service = "security-app-nmap-service"
-      gateway      = "security-app-gateway"
-      front        = "security-app-front"
+      postgres       = "security-app-postgres"
+      mongo          = "security-app-mongo"
+      user-service   = "security-app-user-service"
+      events-service = "security-app-events-service"
+      nmap-service   = "security-app-nmap-service"
+      gateway        = "security-app-gateway"
+      front          = "security-app-front"
     }
     error_message = "task families must match the task-defs JSON and exclude rabbitmq"
   }

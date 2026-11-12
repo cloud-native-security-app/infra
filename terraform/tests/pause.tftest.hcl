@@ -22,8 +22,8 @@ run "zero_pauses_every_service" {
   }
 
   assert {
-    condition     = length(concat(values(aws_ecs_service.data), values(aws_ecs_service.app))) == 6
-    error_message = "the pause must cover all six services (2 data + 4 app)"
+    condition     = length(concat(values(aws_ecs_service.data), values(aws_ecs_service.app))) == 7
+    error_message = "the pause must cover all seven services (2 data + 5 app)"
   }
   assert {
     condition     = alltrue([for svc in concat(values(aws_ecs_service.data), values(aws_ecs_service.app)) : svc.desired_count == 0])

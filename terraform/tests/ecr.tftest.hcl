@@ -17,8 +17,8 @@ run "four_app_repositories" {
   command = plan
 
   assert {
-    condition     = toset([for r in aws_ecr_repository.app : r.name]) == toset(["security-app/user-service", "security-app/nmap-service", "security-app/gateway", "security-app/front"])
-    error_message = "exactly the 4 app repos must exist (no rabbitmq-custom: RabbitMQ replaced by SNS/SQS)"
+    condition     = toset([for r in aws_ecr_repository.app : r.name]) == toset(["security-app/user-service", "security-app/events-service", "security-app/nmap-service", "security-app/gateway", "security-app/front"])
+    error_message = "exactly the 5 app repos must exist (no rabbitmq-custom: RabbitMQ replaced by SNS/SQS)"
   }
   assert {
     condition     = alltrue([for r in aws_ecr_repository.app : r.image_scanning_configuration[0].scan_on_push])
@@ -38,7 +38,7 @@ run "untagged_images_expire" {
   command = plan
 
   assert {
-    condition     = length(aws_ecr_lifecycle_policy.app) == 4
+    condition     = length(aws_ecr_lifecycle_policy.app) == 5
     error_message = "every repo needs a lifecycle policy"
   }
   assert {
@@ -58,7 +58,7 @@ run "outputs_expose_repository_urls" {
   }
 
   assert {
-    condition     = keys(output.ecr_repository_urls) == ["front", "gateway", "nmap-service", "user-service"]
+    condition     = keys(output.ecr_repository_urls) == ["events-service", "front", "gateway", "nmap-service", "user-service"]
     error_message = "repository URLs must be exported by service"
   }
   assert {
