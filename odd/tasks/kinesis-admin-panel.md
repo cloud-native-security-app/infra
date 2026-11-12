@@ -74,7 +74,7 @@ An ordered, replayable event log lets several consumers (admin panel now; abuse 
 | KAP-09 | gateway | `src/kinesis.rs` consumer + `src/admin.rs` aggregator; `GET /api/admin/metrics` and SSE `GET /api/admin/events`; OpenAPI; LocalStack round-trip test | KAP-05, KAP-06 | [x] merged to `develop` |
 | KAP-10 | front | `features/admin/`: container (EventSource + reducer), KPI tiles, scans in flight, critical findings feed, event log; `/admin` route guarded by role; Playwright `e2e/admin-panel.spec.ts` | KAP-09 | [x] merged to `develop` |
 | KAP-07b | broker, nmap-service, gateway | Optional `port`/`protocol` on `vulnFinding` and nullable port in `finding.critical` (host-level findings) | KAP-07 | [x] merged to `develop` |
-| KAP-11 | infra | End-to-end local check with compose; deploy and verify in Learner Lab; cut `v3` from `develop` | all | [~] lab deploy verified 2026-11-11; local compose check replaced by the lab check; `v3` cut pending |
+| KAP-11 | infra | End-to-end local check with compose; deploy and verify in Learner Lab; cut `v3` from `develop` | all | [x] lab deploy verified 2026-11-11; local compose check replaced by the lab check; `v3` branches cut |
 
 KAP-02..KAP-08 do not need a lab session and can start now. Only KAP-01 and KAP-11 need AWS.
 
@@ -135,4 +135,4 @@ Each task is developed on its own branch, cut from `origin/develop` in its repo,
 
 ## Next step
 
-KAP-00 to KAP-10 done and deployed to the lab. Last step: cut `v3` from `develop` in all six repos, then release `develop` to `main` by PR. Follow-ups: event retry/outbox, panel gap after a gateway restart (consumer starts at LATEST), admin nav link stays until reload after a role loss.
+Done: `v3` cut. Follow-up work continues in `odd/tasks/admin-panel-improvements.md`. Follow-ups: event retry/outbox, panel gap after a gateway restart (consumer starts at LATEST), admin nav link stays until reload after a role loss.
