@@ -67,7 +67,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 | NS-05 | infra | `network_scan_emails` variable (email list, validated like `admin_bootstrap_emails`) to user-service env; optional `network_scan_allowed_cidrs` (default empty) to the gateway env; nmap-service in its own security group (egress all, ingress allowed only into Mongo); NVD enrichment on for nmap-service (`MS_NMAP_NVD_ENRICHMENT_ENABLED=true`, `MS_NMAP_NVD_CACHE_TTL_SECS=86400`); `create-test-target.sh` and `create-weak-target.sh` open the target SG to the nmap-service SG; compose; tests and README | NS-00 | [ ] |
 | NS-06 | infra | Lab deploy and check: network scan of the weak target from the UI with an authorized account; a non-authorized account does not see the mode and gets 403 from the API; ssh scan still works; nmap-service cannot reach the gateway or Postgres | NS-02..NS-05, NS-07 | [ ] |
 | NS-07 | user-service | `network_scan` permission: migration (`users.can_network_scan`), bootstrap from `NETWORK_SCAN_EMAILS` (authoritative, idempotent), exposed in the profile the gateway reads and in `/api/me`; internal check endpoint for the gateway; tests | none | [x] 2026-11-12, user-service `1681928` |
-| NS-08 | user-service + gateway | Persist the scan mode in the scan history (user-service column and history payload; gateway sends it on register and reads it back) so `mode` survives a gateway restart. Added 2026-11-12: NS-03 keeps `mode` only in the in-memory `ScanOwnershipRegistry` | NS-03 | [ ] |
+| NS-08 | user-service + gateway | Persist the scan mode in the scan history (user-service column and history payload; gateway sends it on register and reads it back) so `mode` survives a gateway restart. Added 2026-11-12: NS-03 keeps `mode` only in the in-memory `ScanOwnershipRegistry` | NS-03 | [x] 2026-11-12, user-service `3375c52`, gateway `98febf0` |
 
 ### Part 2: email report
 
@@ -155,6 +155,8 @@ Order:
 
 - 2026-11-12: NS-03 review follow-up gateway `008d456` (9 files, +110/-47): denylist adds `fc00::/7` as `target_unique_local`; one `canonical_target` (IPv4-mapped and IPv4-compatible, `::`/`::1` stay IPv6) and `check_target` returns the IP to publish; event test looks up by target; `register` renamed `register_ssh`. RED 3 failing; GREEN `make verify` exit 0 (parent spot check: 15 passed). Review: high, granted by the user, 4 lenses, approved and acknowledged. Advisories left: an allowlisted ULA range is still denied (accepted, the lab is IPv4); `denylisted()` assumes canonical input; could use `Ipv6Addr::is_unique_local`.
 
+- 2026-11-12: NS-08 done (route: delegated writer, two repos). user-service `feature/scan_history_mode` (from develop) `3375c52`, 8 files +252/-11: migration `20261112130000_add_scan_history_mode.sql` (`scan_mode` NOT NULL DEFAULT 'ssh', CHECK), `POST /users/me/scans {target, scan_mode?}`, entries return `scan_mode`. gateway `feature/scan_history_mode` (from `feature/network_scan_mode`) `98febf0`, 5 files +195/-15: sends `scan_mode: "network"` only for network scans (ssh body unchanged), `GET /api/scans` reads mode from history, falls back to memory; restart test; D-19. RED: compile errors in both; GREEN: `make verify` exit 0 in both (parent spot check: user-service 90, gateway `network_scan_mode` 24 passed). Review: medium, under budget in both (no review due). Deploy order: user-service before gateway.
+
 ## Next step
 
-NS-08 (`feature/scan_history_mode` in user-service, then gateway).
+NS-05 in infra (`feature/network_scan`).
