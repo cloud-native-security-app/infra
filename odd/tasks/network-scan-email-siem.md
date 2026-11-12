@@ -20,6 +20,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 - **Network mode is unprivileged.** It uses `nmap -sT -sV --script vuln` (TCP connect, no raw sockets, no `-O`), so it runs on Fargate without extra capabilities. There is no patch check, so findings keep `confidence=version_match` and the report says the patch state was not verified.
 - **Network mode needs a target allowlist (not optional).** Today the stored credential is the de facto proof that the target is the user's. Without it, any user could scan any IP from AWS, which breaks the AWS acceptable-use policy. Network mode only accepts targets inside the allowed CIDR ranges, which are enforced in the gateway. Recommended source: a Terraform variable `network_scan_allowed_cidrs` (default: the VPC CIDR). Pending user confirmation (see Open decisions).
 - **Email through a generic SMTP provider, not SES or SNS.** SES is denied in the lab, and SNS email only sends plain text with no attachment and needs a subscription confirmation per address. user-service sends the email with an SMTP client (`lettre`). It already owns the user's email and the stored result. SMTP host, port, user and password come from SSM; with no host configured, email is disabled and the API answers 503. Port 587 with STARTTLS (AWS only throttles 25). The lab uses a test inbox provider (for example Mailtrap); production can use any SMTP provider.
+- **The email is sent automatically when a scan completes (user decision 2026-11-12).** user-service already records the outcome (`update_scan_outcome`, `user-service/src/repository.rs:282`); when the stored outcome is `completed` it sends the report in the background. The send is best-effort with bounded retry, never fails the outcome update, and runs once per scan (a `report_emailed_at` column makes it idempotent across redeliveries). Failed scans send nothing.
 - **An email always goes to the user's own address.** It goes to the account's email only, never to a free-form recipient, so the feature cannot be used to send spam. Body: an HTML summary (target, date, severity counts, top findings). Attachment: the same JSON the browser exports today. Sending is rate limited per user.
 - **SIEM-ready means seams, not services.** No Wazuh, Suricata or EC2 for them in this plan. The app gets:
   - a `siem.alert` event type in the broker contract;
@@ -32,7 +33,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 ## Open decisions
 
 1. Allowlist source for network mode. Recommended: `network_scan_allowed_cidrs` in Terraform, enforced by the gateway. The alternative is admin-managed ranges in user-service with a UI, which costs more and adds runtime changes.
-2. Email trigger. Recommended: a "Enviar por correo" button on the report. Sending automatically on scan completion as a per-user preference would be a later task.
+2. ~~Email trigger~~. Resolved 2026-11-12 (user): the email is sent automatically when the scan completes.
 3. SMTP provider for the lab (Mailtrap sandbox recommended, so no real mail leaves the lab).
 
 ## Constraints
@@ -68,9 +69,9 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
 | EM-01 | user-service | Report email rendering: HTML summary (target, date, mode, severity counts, top 10 findings) and plain-text alternative, JSON attachment identical to the browser export; pure functions with snapshot tests | none | [ ] |
-| EM-02 | user-service | `Mailer` port with an SMTP adapter (`lettre`, STARTTLS 587) and an in-memory fake; `POST /users/me/scans/{id}/report/email` sends to the account email only; 404 for another user's scan, 409 if not completed, 503 if SMTP is not configured, 429 over the per-user limit; `report.emailed` audit event; tests with the fake and a testcontainers SMTP sink (MailHog or Mailpit) | EM-01 | [ ] |
-| EM-03 | gateway | Proxy `POST /api/scans/:id/report/email` behind the session; OpenAPI; tests | EM-02 | [ ] |
-| EM-04 | front | "Enviar por correo" button in the report with sending, sent and error states (503 disabled, 429 retry later); guards and mock; vitest and Playwright | EM-03 | [ ] |
+| EM-02 | user-service | `Mailer` port with an SMTP adapter (`lettre`, STARTTLS 587) and an in-memory fake; when `update_scan_outcome` stores `completed`, send the report to the account email in the background, once per scan (`report_emailed_at` migration), bounded retry, never failing the update; SMTP unset disables sending; `report.emailed` and `report.email_failed` audit events; tests with the fake and a testcontainers SMTP sink (Mailpit) | EM-01 | [ ] |
+| EM-03 | gateway | Expose the email status of a scan (`sent`, `failed`, `disabled`, `pending`) in the report and history payloads; OpenAPI; tests | EM-02 | [ ] |
+| EM-04 | front | Report shows "Informe enviado a <email>" or why it was not sent; guards and mock; vitest and Playwright | EM-03 | [ ] |
 | EM-05 | infra | SSM SecureStrings for the SMTP host, port, user and password (values set outside Terraform, like OAuth); user-service env; Mailpit in compose; README; tests | EM-02 | [ ] |
 
 ### Part 3: ready for Wazuh and Suricata
@@ -101,9 +102,9 @@ Order:
 | NS-05 | infra | `feature/network_scan` |
 | NS-06 | infra | lab check, no branch unless fixes are needed |
 | EM-01 | user-service | `feature/report_email_render` |
-| EM-02 | user-service | `feature/report_email_send` |
-| EM-03 | gateway | `feature/report_email_proxy` |
-| EM-04 | front | `feature/report_email_button` |
+| EM-02 | user-service | `feature/report_email_on_completion` |
+| EM-03 | gateway | `feature/report_email_status` |
+| EM-04 | front | `feature/report_email_status` |
 | EM-05 | infra | `feature/smtp_config` |
 | SR-01 | broker | `feature/siem_alert_contract` |
 | SR-02 | gateway | `feature/siem_ingest` |
@@ -116,7 +117,7 @@ Order:
 - A user scans an allowed IP without any stored credential and gets a report with ports and version-based findings marked "patch state not verified".
 - A network scan of an IP outside the allowlist is rejected before anything is published.
 - An `ssh` scan behaves exactly as before.
-- From a completed report, the user receives an email at the account address with an HTML summary and the JSON attached; with SMTP unconfigured the button explains email is unavailable.
+- When a scan completes, the user receives one email at the account address with an HTML summary and the JSON attached; the report shows whether it was sent; with SMTP unconfigured nothing is sent and the report says so.
 - With `siem_enabled=false` nothing SIEM-related is deployed and the ingestion route answers 404.
 - With it enabled, a Wazuh alert sample POSTed with the token appears in the admin panel "Alertas IDS" tab within seconds; a wrong token gets 401.
 
@@ -124,7 +125,7 @@ Order:
 
 - Deploying Wazuh, Suricata, OpenSearch or any EC2 for them.
 - PDF reports.
-- Automatic email on completion and free-form recipients.
+- Free-form recipients and on-demand resend.
 - Privileged scans in network mode (SYN scan, OS detection).
 
 ## Progress
