@@ -65,9 +65,9 @@ Found by the user on the `v3` deploy (2026-11-11), plus the follow-ups recorded 
 | AP-07a | gateway | Producer retry with backoff and jitter within 5 s; `emit_all` continues after a failure; tests with a failing publisher | none | [x] gateway #34 |
 | AP-07b | nmap-service | Same as AP-07a | none | [x] nmap-service #29 |
 | AP-07c | user-service | Same as AP-07a | none | [x] user-service #13 |
-| AP-08 | front | Fix: an open chart table widened its card and scaled the plot over its neighbours (card column `minmax(0, 1fr)`); then, user request 2026-11-12, an open table makes its card span the full row so the other charts move down; plot keeps a max width; Playwright spec | AP-06 | [ ] fix committed `200c56a` |
-| AP-09 | front | Events-per-minute chart excludes `finding.critical` (it has its own chart and swamped "Otros"); unit tests for the fold | AP-06 | [ ] |
-| AP-10 | front | Horizontal tabs (WAI-ARIA tabs pattern) for scans in flight, critical findings and event log below the charts; each panel keeps its scroll region and the log keeps pause; a tab shows an unseen-items count that clears when opened; vitest and Playwright (keyboard, axe) | AP-02 | [ ] |
+| AP-08 | front | Fix: an open chart table widened its card and scaled the plot over its neighbours (card column `minmax(0, 1fr)`); then, user request 2026-11-12, an open table makes its card span the full row so the other charts move down; plot keeps a max width; Playwright spec | AP-06 | [x] front #34 |
+| AP-09 | front | Events-per-minute chart excludes `finding.critical` (it has its own chart and swamped "Otros"); unit tests for the fold | AP-06 | [x] front #35 |
+| AP-10 | front | Horizontal tabs (WAI-ARIA tabs pattern) for scans in flight, critical findings and event log below the charts; each panel keeps its scroll region and the log keeps pause; a tab shows an unseen-items count that clears when opened; vitest and Playwright (keyboard, axe) | AP-02 | [x] front #36 |
 
 Order:
 
@@ -128,6 +128,8 @@ A lab deploy and check closes the plan, like KAP-11.
 - 2026-11-11..12: AP-01..AP-07c merged to `develop` (PR numbers in the checklist). AP-01b added by user decision (hamburger menu instead of the two-row nav).
 - 2026-11-12: lab deploy check. `terraform apply` created events-service (8 resources) and gateway task definition revision 2 with `EVENTS_SERVICE_*`; images pushed (events-service first); all ECS services 1/1; `scripts/verify-stack.sh` 11 passed, 0 failed. The user confirmed the charts move live and reported two issues: an open table breaks the chart layout, and "Otros" is swamped by critical findings. Added AP-08..AP-10 (tabs chosen over a sidebar by the user).
 
+- 2026-11-12: AP-08..AP-10 merged (front #34, #35, #36); front redeployed to the lab; `scripts/verify-stack.sh` 11 passed, 0 failed; the user confirmed the panel works. Plan complete.
+
 ## Next step
 
-AP-08 (table layout) on `fix/admin_chart_table_overflow`, then AP-09 and AP-10 in front. Then a lab redeploy of front.
+None in this plan. Release (`v4` cut and `develop` to `main`) is the user's decision.
