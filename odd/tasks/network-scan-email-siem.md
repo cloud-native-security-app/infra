@@ -66,7 +66,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 | NS-04 | front | Scan form: mode choice (SSH credentials or IP only) shown only when `/api/me` says the account has the `network_scan` permission; IP-only explains that patch state is not verified; mode shown in history and report; 403 and 422 messages; guards and contract-server mock; vitest and Playwright | NS-03 | [ ] |
 | NS-05 | infra | `network_scan_emails` variable (email list, validated like `admin_bootstrap_emails`) to user-service env; optional `network_scan_allowed_cidrs` (default empty) to the gateway env; nmap-service in its own security group (egress all, ingress allowed only into Mongo); NVD enrichment on for nmap-service (`MS_NMAP_NVD_ENRICHMENT_ENABLED=true`, `MS_NMAP_NVD_CACHE_TTL_SECS=86400`); `create-test-target.sh` and `create-weak-target.sh` open the target SG to the nmap-service SG; compose; tests and README | NS-00 | [ ] |
 | NS-06 | infra | Lab deploy and check: network scan of the weak target from the UI with an authorized account; a non-authorized account does not see the mode and gets 403 from the API; ssh scan still works; nmap-service cannot reach the gateway or Postgres | NS-02..NS-05, NS-07 | [ ] |
-| NS-07 | user-service | `network_scan` permission: migration (`users.can_network_scan`), bootstrap from `NETWORK_SCAN_EMAILS` (authoritative, idempotent), exposed in the profile the gateway reads and in `/api/me`; internal check endpoint for the gateway; tests | none | [ ] |
+| NS-07 | user-service | `network_scan` permission: migration (`users.can_network_scan`), bootstrap from `NETWORK_SCAN_EMAILS` (authoritative, idempotent), exposed in the profile the gateway reads and in `/api/me`; internal check endpoint for the gateway; tests | none | [x] 2026-11-12, user-service `1681928` |
 
 ### Part 2: email report
 
@@ -143,6 +143,8 @@ Order:
 
 - 2026-11-12: NS-01 done (route: delegated writer, 11 files). broker `feature/scan_mode_contract` `b6d478a`: `scan_mode` enum `ssh|network`, default `ssh`; `allOf` if/then/else requires `network_user`, `ssh_credentials_ref`, `has_sudo` in ssh mode and forbids them in network mode (decision D-16); `scan.requested` payload gets optional `scan_mode`; examples `contracts/examples/scan-request/` with invalid cases. RED 5 failing, GREEN `cargo test --lib` 47 passed and `make verify` exit 0 (parent spot check: 47 passed). Review: whole-branch candidate declined per policy.
 
+- 2026-11-12: NS-07 done (route: delegated writer, 13 files, +689/-7). user-service `feature/network_scan_permission` `1681928`: migration `users.can_network_scan`, `NETWORK_SCAN_EMAILS` parsed like the admin list and applied authoritatively at startup and on `PUT /users/me` (first login of an unregistered email). No new endpoint: the gateway re-validates through the same `GET /users/me` that `require_admin` uses; the field is `can_network_scan` (bool, missing = false). Permission changes are not audited (ADR-015). RED: 23 compile errors; GREEN: `make verify` exit 0 with Docker suites (parent spot check: `cargo test` 99 passed). Review: medium, granted by the user, approved (lens reliability) and acknowledged; advisory R3-001: no test for the fail-closed startup path `WiringError::NetworkScanBootstrapFailed` (follow-up).
+
 ## Next step
 
-NS-07 in user-service (`feature/network_scan_permission`).
+NS-02 in nmap-service (`feature/network_scan_executor`).
