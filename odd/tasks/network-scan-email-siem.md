@@ -58,7 +58,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
-| NS-00 | infra | Local spike: a slim Debian image with `nmap` as a non-root user runs `nmap -sT -sV --script vuln -oX -` against a local target container; record that it needs no extra capability, duration, memory peak and XML shape. The Fargate run is checked in NS-06 | none | [ ] |
+| NS-00 | infra | Local spike: a slim Debian image with `nmap` as a non-root user runs `nmap -sT -sV --script vuln -oX -` against a local target container; record that it needs no extra capability, duration, memory peak and XML shape. The Fargate run is checked in NS-06 | none | [x] 2026-11-12, results in Progress |
 | NS-01 | broker | `scan-request` contract: `scan_mode` (`ssh` default, `network`); `network_user` and `ssh_credentials_ref` required only when `ssh` (JSON Schema if/then); `scan.requested` event payload carries the mode; examples and tests | none | [ ] |
 | NS-02 | nmap-service | Local executor that runs nmap in the container (`-sT -sV --script vuln -T<n> -oX -`, no `-O`, no sudo); pipeline picks the executor by mode; network mode skips the patch check and records why; nmap in the image; parser reused; timeouts and reason codes (`target_unreachable`); unit tests and a testcontainers test against a local target | NS-01 | [ ] |
 | NS-03 | gateway | `POST /api/scans` accepts `mode`; `network` requires the `network_scan` permission re-validated against user-service (403 otherwise), skips credential resolution, rejects denylisted targets and, if `NETWORK_SCAN_ALLOWED_CIDRS` is set, targets outside it (422 with a reason); `ssh` unchanged; publishes the new contract; OpenAPI; tests | NS-01, NS-07 | [ ] |
@@ -136,6 +136,8 @@ Order:
 
 - 2026-11-12: plan written after the effort evaluation. The user chose to start with IP-only scans and to leave the app ready for Wazuh and Suricata without deploying them.
 
+- 2026-11-12: NS-00 local spike. `debian:bookworm-slim` + `nmap` 7.93 as uid 65532 (image 165 MB) ran `nmap -sT -sV --script vuln -T4 -oX -` against an `nginx:1.18` container with `--cap-drop ALL --memory 512m`: exit 0, 1 min 18 s, peak RSS 59 MB, port 80 `nginx 1.18.0` detected, NSE scripts ran (`http-vuln-cve2011-3192`, `http-csrf`, ...). No capability or memory change is needed (512 MB stays). Finding: `vulners` returned no CVEs. Its API (`https://vulners.com/api/v3/burp/software/`) answers `errorCode 401 "Nothing found"` without an API key, also with the upstream `vulners.nse`. This affects `ssh` mode too, so version-based CVEs need another source: the existing NVD enrichment by CPE (`MS_NMAP_NVD_ENRICHMENT_ENABLED`, off in Terraform) or a Vulners API key.
+
 ## Next step
 
-NS-00 (local spike), then NS-01 in broker.
+Decide the CVE source for version matches (NVD enrichment recommended), then NS-01 in broker.
