@@ -17,6 +17,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 ## Decisions
 
 - **Two scan modes.** `ssh` (today's behavior, unchanged) and `network`: nmap-service runs nmap in its own container against the target IP.
+- **nmap runs inside the nmap-service image (user decision 2026-11-12).** The runtime base changes from distroless to a slim Debian with the `nmap` package, running as a non-root user. This reverses the documented decision "SSH al objetivo, no escaneo local" (`nmap-service/docs/architecture.md`, `Dockerfile`), so NS-02 updates both. Rejected: a separate always-on scanner service (one more Fargate task) and a Fargate task per scan (30-60 s start, results through S3).
 - **Network mode is unprivileged.** It uses `nmap -sT -sV --script vuln` (TCP connect, no raw sockets, no `-O`), so it runs on Fargate without extra capabilities. There is no patch check, so findings keep `confidence=version_match` and the report says the patch state was not verified.
 - **Network mode is limited to an allowlist of accounts (user decision 2026-11-12, academic use).** Without credentials, the stored SSH credential no longer proves that the target is the user's, and scanning third-party hosts from AWS breaks its acceptable-use policy. The user chose to control *who* may scan: a few authorized emails, managed by the user. They come from the Terraform variable `network_scan_emails`, applied by user-service at startup like `admin_bootstrap_emails` (authoritative: removing an email revokes the permission). The gateway re-validates the permission against user-service on every network scan, like `require_admin`. The front only shows the mode to authorized accounts. Targets are open by default, with an optional `network_scan_allowed_cidrs` (empty = any). A fixed denylist always applies: loopback, link-local (including the instance metadata endpoint `169.254.169.254`), multicast, broadcast and unspecified addresses.
 - **The scanner is isolated from the app services.** nmap-service moves out of `internal-sg` into its own security group whose only ingress rule elsewhere is Mongo (27017). A network scan from it cannot reach the gateway, user-service, events-service or Postgres. A separate VPC for targets was considered and is not needed for academic use.
@@ -57,7 +58,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
-| NS-00 | infra | Lab spike: run `nmap -sT -sV --script vuln` from a Fargate task (nmap-service image plus nmap) against the weak target's private IP; record duration, memory peak and findings compared with `ssh` mode; open target SG ingress from `internal-sg` | none | [ ] |
+| NS-00 | infra | Local spike: a slim Debian image with `nmap` as a non-root user runs `nmap -sT -sV --script vuln -oX -` against a local target container; record that it needs no extra capability, duration, memory peak and XML shape. The Fargate run is checked in NS-06 | none | [ ] |
 | NS-01 | broker | `scan-request` contract: `scan_mode` (`ssh` default, `network`); `network_user` and `ssh_credentials_ref` required only when `ssh` (JSON Schema if/then); `scan.requested` event payload carries the mode; examples and tests | none | [ ] |
 | NS-02 | nmap-service | Local executor that runs nmap in the container (`-sT -sV --script vuln -T<n> -oX -`, no `-O`, no sudo); pipeline picks the executor by mode; network mode skips the patch check and records why; nmap in the image; parser reused; timeouts and reason codes (`target_unreachable`); unit tests and a testcontainers test against a local target | NS-01 | [ ] |
 | NS-03 | gateway | `POST /api/scans` accepts `mode`; `network` requires the `network_scan` permission re-validated against user-service (403 otherwise), skips credential resolution, rejects denylisted targets and, if `NETWORK_SCAN_ALLOWED_CIDRS` is set, targets outside it (422 with a reason); `ssh` unchanged; publishes the new contract; OpenAPI; tests | NS-01, NS-07 | [ ] |
@@ -137,4 +138,4 @@ Order:
 
 ## Next step
 
-Confirm where nmap runs (recommended: in the nmap-service image), then NS-00 in the lab and NS-01 in broker.
+NS-00 (local spike), then NS-01 in broker.
