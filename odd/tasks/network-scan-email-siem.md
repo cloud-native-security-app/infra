@@ -18,7 +18,8 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 
 - **Two scan modes.** `ssh` (today's behavior, unchanged) and `network`: nmap-service runs nmap in its own container against the target IP.
 - **Network mode is unprivileged.** It uses `nmap -sT -sV --script vuln` (TCP connect, no raw sockets, no `-O`), so it runs on Fargate without extra capabilities. There is no patch check, so findings keep `confidence=version_match` and the report says the patch state was not verified.
-- **Network mode needs a target allowlist (not optional).** Today the stored credential is the de facto proof that the target is the user's. Without it, any user could scan any IP from AWS, which breaks the AWS acceptable-use policy. Network mode only accepts targets inside the allowed CIDR ranges, which are enforced in the gateway. Recommended source: a Terraform variable `network_scan_allowed_cidrs` (default: the VPC CIDR). Pending user confirmation (see Open decisions).
+- **Network mode is limited to an allowlist of accounts (user decision 2026-11-12, academic use).** Without credentials, the stored SSH credential no longer proves that the target is the user's, and scanning third-party hosts from AWS breaks its acceptable-use policy. The user chose to control *who* may scan: a few authorized emails, managed by the user. They come from the Terraform variable `network_scan_emails`, applied by user-service at startup like `admin_bootstrap_emails` (authoritative: removing an email revokes the permission). The gateway re-validates the permission against user-service on every network scan, like `require_admin`. The front only shows the mode to authorized accounts. Targets are open by default, with an optional `network_scan_allowed_cidrs` (empty = any). A fixed denylist always applies: loopback, link-local (including the instance metadata endpoint `169.254.169.254`), multicast, broadcast and unspecified addresses.
+- **The scanner is isolated from the app services.** nmap-service moves out of `internal-sg` into its own security group whose only ingress rule elsewhere is Mongo (27017). A network scan from it cannot reach the gateway, user-service, events-service or Postgres. A separate VPC for targets was considered and is not needed for academic use.
 - **Email through a generic SMTP provider, not SES or SNS.** SES is denied in the lab, and SNS email only sends plain text with no attachment and needs a subscription confirmation per address. user-service sends the email with an SMTP client (`lettre`). It already owns the user's email and the stored result. SMTP host, port, user and password come from SSM; with no host configured, email is disabled and the API answers 503. Port 587 with STARTTLS (AWS only throttles 25). The lab uses a test inbox provider (for example Mailtrap); production can use any SMTP provider.
 - **The email is sent automatically when a scan completes (user decision 2026-11-12).** user-service already records the outcome (`update_scan_outcome`, `user-service/src/repository.rs:282`); when the stored outcome is `completed` it sends the report in the background. The send is best-effort with bounded retry, never fails the outcome update, and runs once per scan (a `report_emailed_at` column makes it idempotent across redeliveries). Failed scans send nothing.
 - **An email always goes to the user's own address.** It goes to the account's email only, never to a free-form recipient, so the feature cannot be used to send spam. Body: an HTML summary (target, date, severity counts, top findings). Attachment: the same JSON the browser exports today. Sending is rate limited per user.
@@ -32,7 +33,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 
 ## Open decisions
 
-1. Allowlist source for network mode. Recommended: `network_scan_allowed_cidrs` in Terraform, enforced by the gateway. The alternative is admin-managed ranges in user-service with a UI, which costs more and adds runtime changes.
+1. ~~Allowlist source~~. Resolved 2026-11-12 (user): an allowlist of accounts (`network_scan_emails`), not of targets.
 2. ~~Email trigger~~. Resolved 2026-11-12 (user): the email is sent automatically when the scan completes.
 3. SMTP provider for the lab (Mailtrap sandbox recommended, so no real mail leaves the lab).
 
@@ -48,7 +49,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 ## Tooling
 
 - Runners: front `npm run verify` and Playwright; Rust services `make verify`; broker contract tests; infra `make verify`.
-- Review: per stored user policy, decline reviews except tasks touching permissions or secrets: NS-03 (allowlist enforcement), EM-02 (SMTP secret and recipient rule), SR-02 (ingestion token).
+- Review: per stored user policy, decline reviews except tasks touching permissions or secrets: NS-07 (network scan permission), NS-03 (permission check and denylist), EM-02 (SMTP secret and recipient rule), SR-02 (ingestion token).
 
 ## Checklist
 
@@ -59,10 +60,11 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 | NS-00 | infra | Lab spike: run `nmap -sT -sV --script vuln` from a Fargate task (nmap-service image plus nmap) against the weak target's private IP; record duration, memory peak and findings compared with `ssh` mode; open target SG ingress from `internal-sg` | none | [ ] |
 | NS-01 | broker | `scan-request` contract: `scan_mode` (`ssh` default, `network`); `network_user` and `ssh_credentials_ref` required only when `ssh` (JSON Schema if/then); `scan.requested` event payload carries the mode; examples and tests | none | [ ] |
 | NS-02 | nmap-service | Local executor that runs nmap in the container (`-sT -sV --script vuln -T<n> -oX -`, no `-O`, no sudo); pipeline picks the executor by mode; network mode skips the patch check and records why; nmap in the image; parser reused; timeouts and reason codes (`target_unreachable`); unit tests and a testcontainers test against a local target | NS-01 | [ ] |
-| NS-03 | gateway | `POST /api/scans` accepts `mode`; `network` skips credential resolution and requires the target inside `NETWORK_SCAN_ALLOWED_CIDRS` (403 with a reason otherwise; empty list means network mode is off); `ssh` unchanged; publishes the new contract; OpenAPI; tests | NS-01 | [ ] |
-| NS-04 | front | Scan form: mode choice (SSH credentials or IP only), IP-only explains that patch state is not verified; mode shown in history and report; 403 allowlist message; guards and contract-server mock; vitest and Playwright | NS-03 | [ ] |
-| NS-05 | infra | `network_scan_allowed_cidrs` variable (default: the default VPC CIDR) to the gateway env; nmap-service memory to 1024 MB if NS-00 shows it is needed; `create-test-target.sh` and `create-weak-target.sh` open the target SG to `internal-sg`; compose; tests and README | NS-00 | [ ] |
-| NS-06 | infra | Lab deploy and check: network scan of the weak target from the UI; ssh scan still works; a target outside the allowlist is rejected | NS-02..NS-05 | [ ] |
+| NS-03 | gateway | `POST /api/scans` accepts `mode`; `network` requires the `network_scan` permission re-validated against user-service (403 otherwise), skips credential resolution, rejects denylisted targets and, if `NETWORK_SCAN_ALLOWED_CIDRS` is set, targets outside it (422 with a reason); `ssh` unchanged; publishes the new contract; OpenAPI; tests | NS-01, NS-07 | [ ] |
+| NS-04 | front | Scan form: mode choice (SSH credentials or IP only) shown only when `/api/me` says the account has the `network_scan` permission; IP-only explains that patch state is not verified; mode shown in history and report; 403 and 422 messages; guards and contract-server mock; vitest and Playwright | NS-03 | [ ] |
+| NS-05 | infra | `network_scan_emails` variable (email list, validated like `admin_bootstrap_emails`) to user-service env; optional `network_scan_allowed_cidrs` (default empty) to the gateway env; nmap-service in its own security group (egress all, ingress allowed only into Mongo); nmap-service memory to 1024 MB if NS-00 shows it is needed; `create-test-target.sh` and `create-weak-target.sh` open the target SG to the nmap-service SG; compose; tests and README | NS-00 | [ ] |
+| NS-06 | infra | Lab deploy and check: network scan of the weak target from the UI with an authorized account; a non-authorized account does not see the mode and gets 403 from the API; ssh scan still works; nmap-service cannot reach the gateway or Postgres | NS-02..NS-05, NS-07 | [ ] |
+| NS-07 | user-service | `network_scan` permission: migration (`users.can_network_scan`), bootstrap from `NETWORK_SCAN_EMAILS` (authoritative, idempotent), exposed in the profile the gateway reads and in `/api/me`; internal check endpoint for the gateway; tests | none | [ ] |
 
 ### Part 2: email report
 
@@ -86,7 +88,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 
 Order:
 
-1. NS-00 (spike), then NS-01, NS-02, NS-03, NS-05, NS-04, NS-06.
+1. NS-00 (spike), then NS-01, NS-07, NS-02, NS-03, NS-05, NS-04, NS-06.
 2. EM-01..EM-05 (independent of part 1; after open decision 2 and 3).
 3. SR-01..SR-05.
 
@@ -101,6 +103,7 @@ Order:
 | NS-04 | front | `feature/network_scan_mode` |
 | NS-05 | infra | `feature/network_scan` |
 | NS-06 | infra | lab check, no branch unless fixes are needed |
+| NS-07 | user-service | `feature/network_scan_permission` |
 | EM-01 | user-service | `feature/report_email_render` |
 | EM-02 | user-service | `feature/report_email_on_completion` |
 | EM-03 | gateway | `feature/report_email_status` |
@@ -115,7 +118,7 @@ Order:
 ## Acceptance criteria
 
 - A user scans an allowed IP without any stored credential and gets a report with ports and version-based findings marked "patch state not verified".
-- A network scan of an IP outside the allowlist is rejected before anything is published.
+- A network scan by an account outside `network_scan_emails`, or of a denylisted address, is rejected before anything is published.
 - An `ssh` scan behaves exactly as before.
 - When a scan completes, the user receives one email at the account address with an HTML summary and the JSON attached; the report shows whether it was sent; with SMTP unconfigured nothing is sent and the report says so.
 - With `siem_enabled=false` nothing SIEM-related is deployed and the ingestion route answers 404.
@@ -134,4 +137,4 @@ Order:
 
 ## Next step
 
-Answer open decision 1 (allowlist source), then NS-00 in the lab and NS-01 in broker.
+Confirm where nmap runs (recommended: in the nmap-service image), then NS-00 in the lab and NS-01 in broker.
