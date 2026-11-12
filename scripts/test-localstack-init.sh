@@ -173,8 +173,9 @@ for pat in 'build: ../events-service' 'SECURITY_EVENTS_STREAM_NAME: "security-ev
   'AWS_REGION: us-east-1' 'AWS_ACCESS_KEY_ID: test' 'GATEWAY_SHARED_SECRET: dev-events-shared-secret' 'HTTP_PORT: "8080"'; do
   printf '%s\n' "$ES" | rg -qF -- "$pat" || err "events-service lacks: $pat"
 done
-printf '%s\n' "$ES" | rg -q 'localstack:\s*$' && printf '%s\n' "$ES" | rg -q 'condition: service_healthy' \
-  || err "events-service does not wait for localstack to be healthy"
+if ! { printf '%s\n' "$ES" | rg -q 'localstack:\s*$' && printf '%s\n' "$ES" | rg -q 'condition: service_healthy'; }; then
+  err "events-service does not wait for localstack to be healthy"
+fi
 printf '%s\n' "$GW" | rg -qF 'EVENTS_SERVICE_BASE_URL: "http://events-service:8080"' || err "gateway lacks EVENTS_SERVICE_BASE_URL"
 printf '%s\n' "$GW" | rg -qF 'EVENTS_SERVICE_SHARED_SECRET: dev-events-shared-secret' || err "gateway lacks EVENTS_SERVICE_SHARED_SECRET matching the events-service secret"
 

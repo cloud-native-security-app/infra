@@ -38,15 +38,15 @@ valores, nunca los commitees).
 
 ## B. Local con docker compose
 
-Guía de arranque para los 4 servicios (`user-service`, `nmap-service`,
-`gateway`, `front`) y sus dependencias (Postgres, Mongo y LocalStack) vía
+Guía de arranque para los 5 servicios (`user-service`, `events-service`,
+`nmap-service`, `gateway`, `front`) y sus dependencias (Postgres, Mongo y LocalStack) vía
 `docker-compose.yml` en esta carpeta. La mensajería local es **LocalStack**,
 que emula SNS + SQS, la mensajería que usa producción (`terraform/messaging.tf`).
 
 ### 0. Prerrequisitos
 
 - Docker + Docker Compose v2 (`docker compose version`).
-- Los repos hermanos (`../user-service`, `../nmap-service`, `../gateway`,
+- Los repos hermanos (`../user-service`, `../events-service`, `../nmap-service`, `../gateway`,
   `../front`) clonados junto a `infra/`.
 - Puerto `4566` libre en el host (LocalStack).
 
@@ -56,8 +56,8 @@ que emula SNS + SQS, la mensajería que usa producción (`terraform/messaging.tf
 docker compose up --build
 ```
 
-Primera vez: compila 3 imágenes Rust (`user-service`, `nmap-service`,
-`gateway`, todas multi-stage con toolchain completa) + la imagen de `front`
+Primera vez: compila 4 imágenes Rust (`user-service`, `events-service`,
+`nmap-service`, `gateway`, todas multi-stage con toolchain completa) + la imagen de `front`
 (Node + build de Vite) — puede tardar varios minutos. Corridas siguientes son
 incrementales.
 
@@ -77,8 +77,9 @@ retención, que LocalStack no aplica; cuenta `000000000000`, región `us-east-1`
 
 Además crea el stream de Kinesis `security-events` (modo provisionado, 1 shard,
 retención de 24 h, igual que lo hará Terraform). Es el canal de eventos de
-dominio; SNS + SQS sigue siendo el canal de comandos. `gateway`, `nmap-service`
-y `user-service` reciben el nombre en `SECURITY_EVENTS_STREAM_NAME`.
+dominio; SNS + SQS sigue siendo el canal de comandos. `gateway`, `nmap-service`,
+`user-service` y `events-service` (el consumidor) reciben el nombre en
+`SECURITY_EVENTS_STREAM_NAME`.
 
 Cada cola tiene su DLQ `<nombre>-dlq` (redrive tras 3 recepciones,
 `maxReceiveCount=3`) y cada suscripción usa `RawMessageDelivery=true`. El script
@@ -101,6 +102,10 @@ docker compose exec localstack awslocal kinesis describe-stream-summary --stream
 
 # user-service
 curl -i http://localhost:8081/health          # 200 si Postgres responde
+
+# events-service — interno, sin puerto publicado; solo responde al gateway
+# (cabecera X-Gateway-Secret = dev-events-shared-secret)
+docker compose logs -f events-service
 
 # gateway
 curl -i http://localhost:8080/health           # 200

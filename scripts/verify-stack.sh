@@ -88,13 +88,14 @@ If something failed, check in this order:
 1. aws ecs describe-services --cluster $CLUSTER --services <svc> --query 'services[0].events'
 2. aws logs filter-log-events --log-group-name /ecs/security-app/<svc> --query 'events[-20:].message' --output text
    (aws-cli v1 has no "logs tail")
+   - events-service: needs its first image pushed (scripts/push-images.sh events-service) and the stream to exist
    - user-service: "DatabaseConnectionFailed" is a boot race with postgres; ECS retries on its own
    - gateway and nmap-service cannot process scans until MSG-GW / MSG-NM (SNS/SQS messaging) land;
      they may restart or stay unhealthy until then
 3. aws elbv2 describe-target-health --target-group-arn <tg-arn>   (gateway and front only)
 4. A service paused with desired_count=0 shows running 0 of desired 0 and passes; HTTP checks fail while paused.
 
-user-service has no target group (not exposed to the internet): verify it through logs only.
+user-service and events-service have no target group (not exposed to the internet): verify them through logs only (events-service logs only means no HTTP probe from here).
 HINTS
   exit 1
 fi
