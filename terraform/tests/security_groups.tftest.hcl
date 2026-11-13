@@ -112,15 +112,45 @@ run "nmap_sg_is_isolated_from_the_internal_sg" {
     condition     = aws_vpc_security_group_ingress_rule.mongo_from_nmap.security_group_id == "sg-internal" && aws_vpc_security_group_ingress_rule.mongo_from_nmap.referenced_security_group_id == "sg-nmap" && aws_vpc_security_group_ingress_rule.mongo_from_nmap.from_port == 27017 && aws_vpc_security_group_ingress_rule.mongo_from_nmap.to_port == 27017
     error_message = "Mongo (internal SG) accepts 27017 from the nmap-service SG"
   }
+  # Every ingress rule resource in the configuration (a terraform test cannot scan the config:
+  # a new aws_vpc_security_group_ingress_rule must be added to this list and to the nmap
+  # no-ingress run, or the guards do not see it).
   assert {
-    condition     = toset([for r in aws_vpc_security_group_ingress_rule.internal_self : r.referenced_security_group_id]) == toset(["sg-internal"]) && aws_vpc_security_group_ingress_rule.internal_from_alb.referenced_security_group_id == "sg-alb"
-    error_message = "no other rule on the internal SG admits the nmap-service SG (gateway, user-service, events-service, Postgres stay closed to it)"
+    condition = (
+      toset([
+        for r in flatten([
+          values(aws_vpc_security_group_ingress_rule.internal_self),
+          values(aws_vpc_security_group_ingress_rule.alb_public),
+          [
+            aws_vpc_security_group_ingress_rule.internal_from_alb,
+            aws_vpc_security_group_ingress_rule.mongo_from_nmap,
+          ],
+        ]) : r.from_port if r.security_group_id == "sg-internal" && r.referenced_security_group_id == "sg-nmap"
+      ]) == toset([27017])
+    )
+    error_message = "among all known ingress rules on the internal SG, only Mongo (27017) admits the nmap-service SG (gateway, user-service, events-service, Postgres stay closed to it)"
   }
 }
 
-run "nmap_sg_has_no_ingress_and_outputs_its_id" {
+run "nmap_sg_has_no_known_ingress_rule_and_outputs_its_id" {
   command = apply
 
+  # No ingress on the nmap SG: it is an SQS consumer with no port. The check covers every
+  # ingress rule resource declared in the configuration (add new ones to this list) and the
+  # inline ingress blocks of the group itself.
+  assert {
+    condition = alltrue([
+      for r in flatten([
+        values(aws_vpc_security_group_ingress_rule.internal_self),
+        values(aws_vpc_security_group_ingress_rule.alb_public),
+        [
+          aws_vpc_security_group_ingress_rule.internal_from_alb,
+          aws_vpc_security_group_ingress_rule.mongo_from_nmap,
+        ],
+      ]) : r.security_group_id != "sg-nmap"
+    ]) && length(aws_security_group.nmap.ingress) == 0
+    error_message = "the nmap-service SG must have no ingress rule"
+  }
   assert {
     condition     = output.nmap_sg_id == "sg-nmap" && output.nmap_sg_name == "security-app-nmap-sg"
     error_message = "the target scripts look the nmap-service SG up through its name and id output"

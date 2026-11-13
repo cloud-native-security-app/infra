@@ -27,6 +27,7 @@ case "$a" in
       *"-test-target-sg"*) [ "${FAKE_TARGET_SG_EXISTS:-0}" = "1" ] && echo "sg-target1" || echo "None" ;;
     esac ;;
   *"authorize-security-group-ingress"*)
+    if [ "${FAKE_AUTH_FAIL:-0}" = "1" ]; then echo "UnauthorizedOperation: not allowed to authorize" >&2; exit 254; fi
     if [ "${FAKE_AUTH_DUPLICATE:-0}" = "1" ]; then echo "InvalidPermission.Duplicate: the rule already exists" >&2; exit 254; fi ;;
   *"create-security-group"*) echo "sg-target1" ;;
   *"describe-subnets"*) echo "subnet-0abc" ;;
@@ -125,6 +126,13 @@ rg -q "run-instances|create-security-group" "$WORK/reuse_sg.aws" && err "reuse_s
 # --- an already present rule (InvalidPermission.Duplicate) is not an error
 run duplicate FAKE_INSTANCE_STATE=running FAKE_TARGET_SG_EXISTS=1 FAKE_AUTH_DUPLICATE=1 --
 [ "$(rc duplicate)" = 0 ] || err "duplicate: exit $(rc duplicate): $(cat "$WORK/duplicate.err")"
+rg -q -F "authorize-security-group-ingress --group-id sg-target1 --protocol tcp --port 0-65535 --source-group sg-nmap1" "$WORK/duplicate.aws" || err "duplicate: the nmap-service rule must have been attempted (otherwise the Duplicate path is untested)"
+
+# --- any other authorize failure is fatal, with a clear message
+run authfail FAKE_INSTANCE_STATE=running FAKE_TARGET_SG_EXISTS=1 FAKE_AUTH_FAIL=1 --
+[ "$(rc authfail)" != 0 ] || err "authfail: a non-Duplicate authorize failure must make the script exit non-zero"
+rg -q -F "could not open sg-target1 to the nmap-service SG" "$WORK/authfail.err" || err "authfail: stderr must say the nmap-service rule could not be opened: $(cat "$WORK/authfail.err")"
+rg -q -F "UnauthorizedOperation" "$WORK/authfail.err" || err "authfail: stderr must carry the AWS error"
 
 # --- missing nmap-service SG: fail before creating anything
 run nonmap FAKE_NMAP_SG_MISSING=1 --
@@ -182,7 +190,7 @@ run bad -- --bogus
 [ "$(rc bad)" != 0 ] || err "bad: unknown argument must fail"
 
 # every aws call of every run carries profile and region (aws-cli v1 ignores AWS_REGION)
-for n in create sgexists reuse reuse_sg duplicate nonmap stopped nointernal destroy destroy_none dry dry_destroy; do
+for n in create sgexists reuse reuse_sg duplicate authfail nonmap stopped nointernal destroy destroy_none dry dry_destroy; do
   while IFS= read -r line; do
     case "$line" in *"--profile learnerlab"*"--region us-east-1"*|*"--region us-east-1"*"--profile learnerlab"*) ;; *) err "$n: aws call without profile+region: $line" ;; esac
   done <"$WORK/$n.aws"

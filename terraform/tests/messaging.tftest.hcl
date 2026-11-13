@@ -77,8 +77,8 @@ run "requests_queue_timeouts_and_retention" {
   command = apply
 
   assert {
-    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].visibility_timeout_seconds == 10 + 900 + 60
-    error_message = "visibility = SSH connect + SSH command timeout + margin (Q1)"
+    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].visibility_timeout_seconds == 10 + 900 + 300 + 60
+    error_message = "visibility = SSH connect + SSH command timeout + NVD enrichment budget + margin (Q1)"
   }
   assert {
     condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].message_retention_seconds == 3600 && aws_sqs_queue.dlq["ms-nmap-scan-requests"].message_retention_seconds == 86400
@@ -94,13 +94,14 @@ run "visibility_follows_the_ssh_timeouts" {
   command = plan
 
   variables {
-    ssh_connect_timeout_secs = 20
-    ssh_command_timeout_secs = 600
-    local_scan_timeout_secs  = 300
+    ssh_connect_timeout_secs   = 20
+    ssh_command_timeout_secs   = 600
+    local_scan_timeout_secs    = 300
+    nvd_enrichment_budget_secs = 120
   }
 
   assert {
-    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].visibility_timeout_seconds == 680
+    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].visibility_timeout_seconds == 20 + 600 + 120 + 60
     error_message = "the visibility timeout must be derived from the SSH timeout variables"
   }
 }
@@ -187,7 +188,27 @@ run "visibility_covers_a_long_local_scan" {
   }
 
   assert {
-    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].visibility_timeout_seconds == 1800 + 60
-    error_message = "the visibility timeout must exceed the local (network) scan timeout plus margin"
+    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].visibility_timeout_seconds == 1800 + 300 + 60
+    error_message = "the visibility timeout must exceed the local (network) scan timeout plus the NVD budget and margin"
   }
+}
+
+run "nvd_enrichment_budget_is_validated" {
+  command = plan
+
+  variables {
+    nvd_enrichment_budget_secs = 0
+  }
+
+  expect_failures = [var.nvd_enrichment_budget_secs]
+}
+
+run "nvd_enrichment_budget_respects_the_sqs_limit" {
+  command = plan
+
+  variables {
+    nvd_enrichment_budget_secs = 43200
+  }
+
+  expect_failures = [var.nvd_enrichment_budget_secs]
 }

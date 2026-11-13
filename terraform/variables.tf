@@ -66,6 +66,18 @@ variable "local_scan_timeout_secs" {
   }
 }
 
+variable "nvd_enrichment_budget_secs" {
+  description = "Seconds the requests visibility timeout budgets for NVD enrichment after the scan (nmap-service enables it in both modes; without an NVD API key NVD allows about 5 requests per 30 s). nmap-service has no NVD timeout variable, so this only sizes the queue."
+  type        = number
+  default     = 300
+
+  validation {
+    # SQS caps the visibility timeout at 12 hours.
+    condition     = var.nvd_enrichment_budget_secs > 0 && max(var.ssh_connect_timeout_secs + var.ssh_command_timeout_secs, var.local_scan_timeout_secs) + var.nvd_enrichment_budget_secs + 60 <= 43200
+    error_message = "nvd_enrichment_budget_secs must be positive and keep the longest scan timeout + budget + 60 within the 12-hour SQS visibility limit."
+  }
+}
+
 variable "security_events_encryption" {
   description = "Server-side encryption of the security-events Kinesis stream: KMS (AWS-managed key alias/aws/kinesis) or NONE."
   type        = string
