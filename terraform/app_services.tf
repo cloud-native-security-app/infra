@@ -89,6 +89,8 @@ locals {
         SECURITY_EVENTS_STREAM_NAME = aws_kinesis_stream.security_events.name
         # Authoritative admin list: user-service grants and revokes the admin role from it.
         ADMIN_BOOTSTRAP_EMAILS = join(",", var.admin_bootstrap_emails)
+        # Authoritative list of accounts that may start IP-only (network mode) scans.
+        NETWORK_SCAN_EMAILS = join(",", var.network_scan_emails)
       }
       secrets = {
         DATABASE_URL               = aws_ssm_parameter.database_url.arn
@@ -123,7 +125,9 @@ locals {
         MS_NMAP_MONGO_URI                    = "mongodb://mongo:27017/?directConnection=true"
         MS_NMAP_MONGO_DB                     = "db-nmap"
         MS_NMAP_SSH_PORT                     = "22"
-        MS_NMAP_NVD_ENRICHMENT_ENABLED       = "false"
+        MS_NMAP_NVD_ENRICHMENT_ENABLED       = "true" # version-based CVEs come from NVD in both modes
+        MS_NMAP_NVD_CACHE_TTL_SECS           = "86400"
+        MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS      = tostring(var.local_scan_timeout_secs)
         MS_NMAP_SCAN_TIMING                  = "aggressive"
         MS_NMAP_SSH_CONNECT_TIMEOUT_SECS     = tostring(var.ssh_connect_timeout_secs)
         MS_NMAP_SSH_COMMAND_TIMEOUT_SECS     = tostring(var.ssh_command_timeout_secs)
@@ -141,7 +145,7 @@ locals {
       port            = 8080
       service_connect = "client"
       target_group    = "gateway"
-      environment = {
+      environment = merge({
         HTTP_HOST            = "0.0.0.0"
         HTTP_PORT            = "8080"
         GOOGLE_REDIRECT_URI  = "https://${aws_lb.main.dns_name}:8080/auth/callback"
@@ -158,7 +162,12 @@ locals {
         GATEWAY_SCAN_OUTCOMES_QUEUE_URL         = aws_sqs_queue.consumer["gateway-scan-outcomes"].id
         GATEWAY_SCAN_OUTCOMES_DLQ_URL           = aws_sqs_queue.dlq["gateway-scan-outcomes"].id
         SECURITY_EVENTS_STREAM_NAME             = aws_kinesis_stream.security_events.name
-      }
+        },
+        # Unset = any target outside the gateway denylist; set = network scans limited to these ranges.
+        length(var.network_scan_allowed_cidrs) == 0 ? {} : {
+          NETWORK_SCAN_ALLOWED_CIDRS = join(",", var.network_scan_allowed_cidrs)
+        }
+      )
       secrets = {
         MS_USUARIOS_SHARED_SECRET    = aws_ssm_parameter.gateway_shared_secret.arn
         EVENTS_SERVICE_SHARED_SECRET = aws_ssm_parameter.events_service_shared_secret.arn
@@ -232,8 +241,9 @@ resource "aws_ecs_service" "app" {
   health_check_grace_period_seconds = each.value.target_group == null ? null : 60
 
   network_configuration {
-    subnets          = local.subnet_ids
-    security_groups  = [aws_security_group.internal.id]
+    subnets = local.subnet_ids
+    # nmap-service scans arbitrary targets, so it sits outside the internal SG.
+    security_groups  = [each.key == "nmap-service" ? aws_security_group.nmap.id : aws_security_group.internal.id]
     assign_public_ip = true # default VPC has no NAT; needed to pull images from ECR
   }
 

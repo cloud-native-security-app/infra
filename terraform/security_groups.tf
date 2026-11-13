@@ -69,3 +69,32 @@ resource "aws_vpc_security_group_egress_rule" "internal_all" {
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
+
+# nmap-service runs scans against arbitrary targets, so it must not share the internal SG:
+# a compromised scan process would otherwise reach the gateway, user-service and Postgres.
+# It has no inbound callers (SQS consumer, no port); Service Connect is client-only.
+resource "aws_security_group" "nmap" {
+  name        = local.nmap_sg_name
+  description = "${var.project} nmap-service tasks (scanner, isolated from the internal SG)"
+  vpc_id      = local.vpc_id
+}
+
+# Mongo is reached through Service Connect: the client proxy connects straight to the mongo
+# task on 27017, so the rule lives on the SG mongo runs in (internal). It is the only rule
+# on the internal SG that admits the nmap SG.
+resource "aws_vpc_security_group_ingress_rule" "mongo_from_nmap" {
+  security_group_id            = aws_security_group.internal.id
+  description                  = "nmap-service to Mongo"
+  ip_protocol                  = "tcp"
+  from_port                    = 27017
+  to_port                      = 27017
+  referenced_security_group_id = aws_security_group.nmap.id
+}
+
+# Scan targets, ECR pulls, SQS/SNS, Kinesis, CloudWatch Logs and SSM.
+resource "aws_vpc_security_group_egress_rule" "nmap_all" {
+  security_group_id = aws_security_group.nmap.id
+  description       = "All outbound"
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+}

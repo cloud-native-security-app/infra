@@ -96,6 +96,7 @@ run "visibility_follows_the_ssh_timeouts" {
   variables {
     ssh_connect_timeout_secs = 20
     ssh_command_timeout_secs = 600
+    local_scan_timeout_secs  = 300
   }
 
   assert {
@@ -175,5 +176,18 @@ run "topic_policies_only_use_actions_sns_accepts" {
       ]
     ]]))
     error_message = "topic policies may only list the SNS topic actions, without wildcards"
+  }
+}
+
+run "visibility_covers_a_long_local_scan" {
+  command = plan
+
+  variables {
+    local_scan_timeout_secs = 1800
+  }
+
+  assert {
+    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].visibility_timeout_seconds == 1800 + 60
+    error_message = "the visibility timeout must exceed the local (network) scan timeout plus margin"
   }
 }

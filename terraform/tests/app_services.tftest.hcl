@@ -28,6 +28,13 @@ override_resource {
   }
 }
 
+override_resource {
+  target = aws_security_group.nmap
+  values = {
+    id = "sg-nmap"
+  }
+}
+
 # One distinct ARN per parameter, so the tests can tell which one each secret uses.
 override_resource {
   target = aws_ssm_parameter.postgres_password
@@ -256,9 +263,10 @@ run "environment_matches_the_legacy_json" {
         RUST_LOG                    = "info,user_service=debug,tower_http=debug"
         SECURITY_EVENTS_STREAM_NAME = "security-events"
         ADMIN_BOOTSTRAP_EMAILS      = ""
+        NETWORK_SCAN_EMAILS         = ""
       }
     )
-    error_message = "user-service keeps its non-secret settings (no admins unless admin_bootstrap_emails is set)"
+    error_message = "user-service keeps its non-secret settings (no admins and no network-scan accounts unless the lists are set)"
   }
   assert {
     condition = (
@@ -300,7 +308,9 @@ run "environment_matches_the_legacy_json" {
         MS_NMAP_MONGO_URI                    = "mongodb://mongo:27017/?directConnection=true"
         MS_NMAP_MONGO_DB                     = "db-nmap"
         MS_NMAP_SSH_PORT                     = "22"
-        MS_NMAP_NVD_ENRICHMENT_ENABLED       = "false"
+        MS_NMAP_NVD_ENRICHMENT_ENABLED       = "true"
+        MS_NMAP_NVD_CACHE_TTL_SECS           = "86400"
+        MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS      = "900"
         MS_NMAP_SCAN_TIMING                  = "aggressive"
         MS_NMAP_SSH_CONNECT_TIMEOUT_SECS     = "10"
         MS_NMAP_SSH_COMMAND_TIMEOUT_SECS     = "900"
@@ -350,10 +360,10 @@ run "services_run_the_bootstrap_definitions" {
       svc.name == k && svc.launch_type == "FARGATE" && svc.desired_count == 1 &&
       svc.task_definition == aws_ecs_task_definition.app[k].arn &&
       svc.network_configuration[0].assign_public_ip &&
-      svc.network_configuration[0].security_groups == toset(["sg-internal"]) &&
+      svc.network_configuration[0].security_groups == toset([k == "nmap-service" ? "sg-nmap" : "sg-internal"]) &&
       svc.network_configuration[0].subnets == toset(["subnet-aaa", "subnet-bbb"])
     ])
-    error_message = "services start from the bootstrap task definition on Fargate in the internal SG with a public IP"
+    error_message = "services start from the bootstrap task definition on Fargate in the internal SG (nmap-service in its own SG) with a public IP"
   }
 }
 
@@ -486,4 +496,84 @@ run "admin_bootstrap_emails_rejects_a_non_email" {
   }
 
   expect_failures = [var.admin_bootstrap_emails]
+}
+
+run "network_scan_emails_reach_user_service_comma_separated" {
+  command = apply
+
+  variables {
+    network_scan_emails = ["scan@example.com", "ops@example.com"]
+  }
+
+  assert {
+    condition = (
+      { for e in jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].environment : e.name => e.value }["NETWORK_SCAN_EMAILS"] == "scan@example.com,ops@example.com"
+    )
+    error_message = "user-service receives the network-scan list as NETWORK_SCAN_EMAILS, comma separated"
+  }
+}
+
+run "network_scan_emails_rejects_a_non_email" {
+  command = plan
+
+  variables {
+    network_scan_emails = ["not-an-email"]
+  }
+
+  expect_failures = [var.network_scan_emails]
+}
+
+run "network_scan_allowed_cidrs_are_omitted_when_empty" {
+  command = apply
+
+  assert {
+    condition     = !contains([for e in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].environment : e.name], "NETWORK_SCAN_ALLOWED_CIDRS")
+    error_message = "an empty allowlist leaves NETWORK_SCAN_ALLOWED_CIDRS unset (the gateway then accepts any public target)"
+  }
+}
+
+run "network_scan_allowed_cidrs_reach_the_gateway_comma_separated" {
+  command = apply
+
+  variables {
+    network_scan_allowed_cidrs = ["172.31.0.0/16", "10.0.0.0/8"]
+  }
+
+  assert {
+    condition = (
+      { for e in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].environment : e.name => e.value }["NETWORK_SCAN_ALLOWED_CIDRS"] == "172.31.0.0/16,10.0.0.0/8"
+    )
+    error_message = "the gateway receives the allowlist as NETWORK_SCAN_ALLOWED_CIDRS, comma separated"
+  }
+  assert {
+    condition = alltrue([for k in ["user-service", "nmap-service"] :
+      !contains([for e in jsondecode(aws_ecs_task_definition.app[k].container_definitions)[0].environment : e.name], "NETWORK_SCAN_ALLOWED_CIDRS")
+    ])
+    error_message = "only the gateway enforces the allowlist"
+  }
+}
+
+run "network_scan_allowed_cidrs_rejects_a_bad_cidr" {
+  command = plan
+
+  variables {
+    network_scan_allowed_cidrs = ["10.0.0.0/33"]
+  }
+
+  expect_failures = [var.network_scan_allowed_cidrs]
+}
+
+run "nmap_local_scan_timeout_follows_the_variable" {
+  command = apply
+
+  variables {
+    local_scan_timeout_secs = 1200
+  }
+
+  assert {
+    condition = (
+      { for e in jsondecode(aws_ecs_task_definition.app["nmap-service"].container_definitions)[0].environment : e.name => e.value }["MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS"] == "1200"
+    )
+    error_message = "MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS comes from local_scan_timeout_secs"
+  }
 }

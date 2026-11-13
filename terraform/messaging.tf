@@ -12,8 +12,9 @@ locals {
   scan_queues = {
     "ms-nmap-scan-requests" = {
       topic = "scan-requests"
-      # Fixed ceiling, no heartbeat (Q1): a scan never outlives its SSH timeouts.
-      visibility_timeout = var.ssh_connect_timeout_secs + var.ssh_command_timeout_secs + 60
+      # Fixed ceiling, no heartbeat (Q1): a scan never outlives its SSH timeouts (ssh mode)
+      # or the local scan timeout (network mode), whichever is longer, plus a margin.
+      visibility_timeout = max(var.ssh_connect_timeout_secs + var.ssh_command_timeout_secs, var.local_scan_timeout_secs) + 60
       # Requests carry SSH credentials: keep them briefly (Q4).
       retention     = 3600
       dlq_retention = 24 * 3600

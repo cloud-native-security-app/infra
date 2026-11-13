@@ -38,6 +38,16 @@ output "internal_sg_id" {
   value       = aws_security_group.internal.id
 }
 
+output "nmap_sg_name" {
+  description = "nmap-service security group name."
+  value       = local.nmap_sg_name
+}
+
+output "nmap_sg_id" {
+  description = "nmap-service (scanner) security group id; scan targets open their SG to it."
+  value       = aws_security_group.nmap.id
+}
+
 output "log_prefix" {
   description = "CloudWatch log group prefix."
   value       = local.log_prefix
