@@ -62,6 +62,10 @@ services:
       HTTP_HOST: 0.0.0.0
       HTTP_PORT: "8080"
       GATEWAY_SHARED_SECRET: dev-shared-secret
+      # Cuentas con el permiso network_scan (escaneo solo por IP). Lista
+      # autoritativa separada por comas; vacia = nadie (mismo contrato que
+      # network_scan_emails en Terraform). Ejemplo: NETWORK_SCAN_EMAILS=a@x.cl,b@x.cl
+      NETWORK_SCAN_EMAILS: "${NETWORK_SCAN_EMAILS:-}"
       # Clave de cifrado en reposo de las credenciales de red (feature
       # network_credentials_api): 32 bytes, hex de 64 caracteres — SOLO para
       # laboratorio, como el resto de secretos de este compose.
@@ -107,7 +111,11 @@ services:
       MS_NMAP_SSH_PORT: "22"
       MS_NMAP_SSH_CONNECT_TIMEOUT_SECS: "10"
       MS_NMAP_SSH_COMMAND_TIMEOUT_SECS: "${SCAN_SSH_COMMAND_TIMEOUT_SECS:-300}"
-      MS_NMAP_NVD_ENRICHMENT_ENABLED: "false"
+      # Igual que Terraform: las CVEs por version vienen de NVD en ambos modos.
+      # Sin MS_NMAP_NVD_API_KEY NVD limita a ~5 peticiones/30 s; la cache en Mongo absorbe repetidos.
+      MS_NMAP_NVD_ENRICHMENT_ENABLED: "true"
+      MS_NMAP_NVD_CACHE_TTL_SECS: "86400"
+      MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS: "${SCAN_LOCAL_TIMEOUT_SECS:-900}"
       # Mensajería SNS + SQS contra LocalStack. `AWS_ENDPOINT_URL` redirige el
       # SDK; las credenciales son ficticias (LocalStack no las valida). Las
       # URLs/ARNs son estáticas: cuenta 000000000000, región us-east-1.
@@ -160,6 +168,9 @@ services:
       SCAN_SUBMISSION_RATE_LIMIT_MAX_REQUESTS: "5"
       SCAN_SUBMISSION_RATE_LIMIT_WINDOW_SECS: "60"
       SECURITY_EVENTS_STREAM_NAME: "security-events"
+      # Rangos CIDR permitidos como objetivo del escaneo por IP, separados por
+      # comas. Vacio = cualquier objetivo fuera de la denylist del gateway.
+      NETWORK_SCAN_ALLOWED_CIDRS: "${NETWORK_SCAN_ALLOWED_CIDRS:-}"
     ports:
       - "8080:8080"
 

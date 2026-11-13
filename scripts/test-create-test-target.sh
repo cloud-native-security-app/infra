@@ -22,9 +22,12 @@ case "$a" in
   *"describe-vpcs"*) echo "vpc-0123" ;;
   *"describe-security-groups"*)
     case "$a" in
+      *"-nmap-sg"*) [ "${FAKE_NMAP_SG_MISSING:-0}" = "1" ] && echo "None" || echo "sg-nmap1" ;;
       *"-internal-sg"*) [ "${FAKE_INTERNAL_SG_MISSING:-0}" = "1" ] && echo "None" || echo "sg-internal1" ;;
       *"-test-target-sg"*) [ "${FAKE_TARGET_SG_EXISTS:-0}" = "1" ] && echo "sg-target1" || echo "None" ;;
     esac ;;
+  *"authorize-security-group-ingress"*)
+    if [ "${FAKE_AUTH_DUPLICATE:-0}" = "1" ]; then echo "InvalidPermission.Duplicate: the rule already exists" >&2; exit 254; fi ;;
   *"create-security-group"*) echo "sg-target1" ;;
   *"describe-subnets"*) echo "subnet-0abc" ;;
   *"ssm get-parameters"*) echo "ami-al2023test" ;;
@@ -63,6 +66,8 @@ run create --
 rg -q -F "create-security-group --group-name security-app-test-target-sg" "$WORK/create.aws" || err "create: target SG not created"
 rg -q -F "authorize-security-group-ingress --group-id sg-target1 --protocol tcp --port 22 --source-group sg-internal1" "$WORK/create.aws" \
   || err "create: ingress must be tcp/22 from the internal SG id only"
+rg -q -F "authorize-security-group-ingress --group-id sg-target1 --protocol tcp --port 0-65535 --source-group sg-nmap1" "$WORK/create.aws" || err "create: all TCP must be opened to the nmap-service SG id (network mode scans every port)"
+[ "$(rg -c -F "authorize-security-group-ingress" "$WORK/create.aws")" = 2 ] || err "create: exactly 2 ingress rules (22 from internal, all TCP from nmap-service) expected"
 rg -q -F "0.0.0.0/0" "$WORK/create.aws" && err "create: 0.0.0.0/0 must never appear in any aws call"
 rg -q -F -- "--cidr" "$WORK/create.aws" && err "create: no --cidr ingress allowed"
 rg -q -- "run-instances.*--image-id ami-al2023test" "$WORK/create.aws" || err "create: AL2023 AMI from SSM not used"
@@ -90,6 +95,7 @@ lookup="$(rg -n -F "security-app-internal-sg" "$WORK/create.aws" | head -n1 | cu
 
 # --- create path, target SG already present: reuse it, no new SG
 run sgexists FAKE_TARGET_SG_EXISTS=1 --
+rg -q -F "authorize-security-group-ingress --group-id sg-target1 --protocol tcp --port 0-65535 --source-group sg-nmap1" "$WORK/sgexists.aws" || err "sgexists: existing SG must get the nmap-service rule"
 [ "$(rc sgexists)" = 0 ] || err "sgexists: exit $(rc sgexists)"
 rg -q -F "create-security-group" "$WORK/sgexists.aws" && err "sgexists: must not create the SG again"
 rg -q -F -- "--security-group-ids sg-target1" "$WORK/sgexists.aws" || err "sgexists: instance must use the existing SG"
@@ -109,6 +115,22 @@ run stopped FAKE_INSTANCE_STATE=stopped --
 rg -q -F "start-instances --instance-ids i-existing" "$WORK/stopped.aws" || err "stopped: must start the instance"
 rg -q -F "run-instances" "$WORK/stopped.aws" && err "stopped: must not create a new instance"
 rg -q -F "wait instance-running --instance-ids i-existing" "$WORK/stopped.aws" || err "stopped: must wait for running"
+
+# --- running instance with an existing target SG: the nmap-service rule is topped up
+run reuse_sg FAKE_INSTANCE_STATE=running FAKE_TARGET_SG_EXISTS=1 --
+[ "$(rc reuse_sg)" = 0 ] || err "reuse_sg: exit $(rc reuse_sg): $(cat "$WORK/reuse_sg.err")"
+rg -q -F "authorize-security-group-ingress --group-id sg-target1 --protocol tcp --port 0-65535 --source-group sg-nmap1" "$WORK/reuse_sg.aws" || err "reuse_sg: must open the target SG to the nmap-service SG"
+rg -q "run-instances|create-security-group" "$WORK/reuse_sg.aws" && err "reuse_sg: must not create anything"
+
+# --- an already present rule (InvalidPermission.Duplicate) is not an error
+run duplicate FAKE_INSTANCE_STATE=running FAKE_TARGET_SG_EXISTS=1 FAKE_AUTH_DUPLICATE=1 --
+[ "$(rc duplicate)" = 0 ] || err "duplicate: exit $(rc duplicate): $(cat "$WORK/duplicate.err")"
+
+# --- missing nmap-service SG: fail before creating anything
+run nonmap FAKE_NMAP_SG_MISSING=1 --
+[ "$(rc nonmap)" != 0 ] || err "nonmap: must fail"
+no_mutation nonmap || err "nonmap: no mutating call allowed"
+rg -q -i 'terraform stack' "$WORK/nonmap.err" || err "nonmap: must say to apply the Terraform stack first"
 
 # --- missing internal SG: fail before creating anything
 run nointernal FAKE_INTERNAL_SG_MISSING=1 --
@@ -153,13 +175,14 @@ run override AWS_PROFILE=other AWS_REGION=us-west-2 PROJECT=demo FAKE_INSTANCE_S
 [ "$(rc override)" = 0 ] || err "override: exit $(rc override)"
 rg -q -F -- "--profile other --region us-west-2" "$WORK/override.aws" || err "override: profile/region ignored"
 rg -q -F "demo-internal-sg" "$WORK/override.aws" || err "override: PROJECT ignored"
+rg -q -F "demo-nmap-sg" "$WORK/override.aws" || err "override: PROJECT must also name the nmap-service SG"
 
 # --- unknown argument
 run bad -- --bogus
 [ "$(rc bad)" != 0 ] || err "bad: unknown argument must fail"
 
 # every aws call of every run carries profile and region (aws-cli v1 ignores AWS_REGION)
-for n in create sgexists reuse stopped nointernal destroy destroy_none dry dry_destroy; do
+for n in create sgexists reuse reuse_sg duplicate nonmap stopped nointernal destroy destroy_none dry dry_destroy; do
   while IFS= read -r line; do
     case "$line" in *"--profile learnerlab"*"--region us-east-1"*|*"--region us-east-1"*"--profile learnerlab"*) ;; *) err "$n: aws call without profile+region: $line" ;; esac
   done <"$WORK/$n.aws"
