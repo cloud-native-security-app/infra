@@ -121,9 +121,40 @@ TF_VAR_admin_bootstrap_emails='["admin@example.com"]' terraform -chdir=terraform
 
 Every later `apply` must pass the same list: without it the default empty list revokes every admin.
 
+## Network scan (IP-only mode)
+
+Network mode scans an IP without SSH credentials and is limited to accounts with the `network_scan` permission.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `network_scan_emails` | `[]` | user-service `NETWORK_SCAN_EMAILS`, comma separated. Authoritative like the admin list: only these emails have the permission (empty = nobody). Same email validation as `admin_bootstrap_emails`. |
+| `network_scan_allowed_cidrs` | `[]` | gateway `NETWORK_SCAN_ALLOWED_CIDRS`, comma separated. Empty leaves the variable unset: any target outside the gateway denylist is accepted. Each entry must be a valid CIDR. |
+| `local_scan_timeout_secs` | `900` | nmap-service `MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS`. |
+| `nvd_enrichment_budget_secs` | `300` | Queue-only: seconds the requests visibility timeout budgets for NVD enrichment (nmap-service has no NVD timeout variable). Must be positive. |
+
+nmap-service also gets `MS_NMAP_NVD_ENRICHMENT_ENABLED=true` and `MS_NMAP_NVD_CACHE_TTL_SECS=86400` (version-based CVEs come from NVD in both modes; without `MS_NMAP_NVD_API_KEY` NVD allows about 5 requests per 30 s and the Mongo cache absorbs repeats). Pass the lists at apply time and on every later apply, like the admin list:
+
+```sh
+TF_VAR_network_scan_emails='["scanner@example.com"]' \
+TF_VAR_network_scan_allowed_cidrs='["172.31.0.0/16"]' terraform -chdir=terraform apply
+```
+
+The requests queue visibility timeout is `max(ssh connect + ssh command, local scan timeout) + nvd_enrichment_budget_secs + 60` seconds (1270 by default), so a message never reappears while a scan runs.
+
+### nmap-service security group
+
+nmap-service scans arbitrary targets, so it runs in its own group `security-app-nmap-sg` (outputs `nmap_sg_name`, `nmap_sg_id`), not in `security-app-internal-sg`:
+
+- Egress: all (scan targets, ECR, SQS/SNS, Kinesis, Logs, SSM). No ingress: it is an SQS consumer with no port, and Service Connect is client-only.
+- Mongo is reached through Service Connect, whose client proxy connects straight to the mongo task, so the internal SG has one extra rule: tcp/27017 from the nmap SG (`mongo_from_nmap`). Nothing else on the internal SG admits the nmap SG, so the gateway, user-service, events-service and Postgres do not accept its traffic.
+- Scan targets must allow the nmap SG: `create-test-target.sh` and `create-weak-target.sh` open all TCP to it (plus the existing internal-SG rules). Re-run them against an existing target to add the rule.
+- After applying this change, re-run `create-test-target.sh` and `create-weak-target.sh` for every existing scan target: they still only admit the internal SG, so until the nmap SG rule is added, scans from nmap-service time out over SSH.
+
+Deploy order: apply Terraform, then roll out user-service and nmap-service before the gateway (the gateway checks the permission on user-service and publishes network-mode requests only nmap-service understands).
+
 ## Scan test target
 
-`scripts/create-test-target.sh` creates a disposable Amazon Linux 2023 `t3.micro` (nmap installed, SSH password login) to test the network-credentials scan end to end. It stays outside Terraform on purpose: it is a throwaway lab target, not part of the platform. Apply the Terraform stack first; SSH (tcp/22) is allowed only from `security-app-internal-sg`, never from `0.0.0.0/0`.
+`scripts/create-test-target.sh` creates a disposable Amazon Linux 2023 `t3.micro` (nmap installed, SSH password login) to test the network-credentials scan end to end. It stays outside Terraform on purpose: it is a throwaway lab target, not part of the platform. Apply the Terraform stack first; SSH (tcp/22) is allowed from `security-app-internal-sg` and all TCP from `security-app-nmap-sg` (the scanner), never from `0.0.0.0/0`.
 
 ```sh
 scripts/create-test-target.sh            # create or reuse; prints the form values
@@ -142,7 +173,7 @@ In the front "Credenciales de red" form use the printed PRIVATE IP as `<ip>/32`,
 - tcp/21: stock vsftpd with anonymous read-only access, passive mode off (no extra ports) -> ftp-anon.
 - tcp/22: sshd with password login, as in the scan test target.
 
-All four ports are allowed only from `security-app-internal-sg` (security group `security-app-weak-target-sg`), never from `0.0.0.0/0`. For demos only: create it, scan it, destroy it.
+All four ports are allowed only from `security-app-internal-sg`, and all TCP from `security-app-nmap-sg` (network mode probes every port); the target security group is `security-app-weak-target-sg`. Never from `0.0.0.0/0`. For demos only: create it, scan it, destroy it.
 
 ```sh
 scripts/create-weak-target.sh            # create or reuse; prints the form values

@@ -19,9 +19,10 @@
 #             Passive mode is off on purpose, so no extra data-port range is opened.
 #
 # Network: default VPC, public IP (needed for dnf to reach the internet without a NAT).
-# Every port above is allowed ONLY from the Terraform internal security group
-# (${PROJECT}-internal-sg), never from 0.0.0.0/0: scans use the PRIVATE IP and run from the
-# nmap-service tasks, which sit in that SG inside the same VPC.
+# Every port above is allowed ONLY from Terraform security groups, never from 0.0.0.0/0: scans
+# use the PRIVATE IP and run from the nmap-service tasks inside the same VPC. The lab ports
+# come from ${PROJECT}-internal-sg; all TCP comes from ${PROJECT}-nmap-sg (the scanner's own
+# SG, which network mode needs because it probes every port and SSH mode needs for tcp/22).
 # Stdout carries the summary; the last line is the instance id. Nothing is stored on disk.
 set -euo pipefail
 
@@ -30,6 +31,7 @@ AWS_PROFILE="${AWS_PROFILE:-learnerlab}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 TARGET_SG_NAME="${PROJECT}-weak-target-sg"
 INTERNAL_SG_NAME="${PROJECT}-internal-sg"
+NMAP_SG_NAME="${PROJECT}-nmap-sg"
 INSTANCE_NAME="${PROJECT}-weak-target"
 SSH_USER="ec2-user"
 AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
@@ -71,6 +73,24 @@ sg_id() {
     --query 'SecurityGroups[0].GroupId' --output text)"
 }
 
+# allow_nmap <target-sg-id>: opens all TCP to the nmap-service SG. Scans run from nmap-service,
+# which sits in its own SG (not the internal one), and network mode probes every port; ssh mode
+# also reaches tcp/22 through this rule. An already present rule is not an error.
+allow_nmap() {
+  local out
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log "DRY-RUN: aws ec2 authorize-security-group-ingress --group-id $1 --protocol tcp --port 0-65535 --source-group $NMAP_SG_ID"
+    return 0
+  fi
+  if ! out="$(awsr ec2 authorize-security-group-ingress --group-id "$1" \
+      --protocol tcp --port 0-65535 --source-group "$NMAP_SG_ID" 2>&1)"; then
+    case "$out" in
+      *InvalidPermission.Duplicate*) ;;
+      *) die "could not open $1 to the nmap-service SG: $out" ;;
+    esac
+  fi
+}
+
 # Non-terminated instance tagged Name=${INSTANCE_NAME}: "<id> <state>" or empty.
 existing="$(awsr ec2 describe-instances \
   --filters "Name=tag:Name,Values=$INSTANCE_NAME" \
@@ -104,6 +124,13 @@ fi
 INTERNAL_SG_ID="$(sg_id "$INTERNAL_SG_NAME")"
 [ -n "$INTERNAL_SG_ID" ] || die "security group $INTERNAL_SG_NAME not found in $VPC_ID; apply the Terraform stack first"
 
+# nmap-service runs in its own SG (Terraform output nmap_sg_id), outside the internal SG.
+NMAP_SG_ID="$(sg_id "$NMAP_SG_NAME")"
+[ -n "$NMAP_SG_ID" ] || die "security group $NMAP_SG_NAME not found in $VPC_ID; apply the Terraform stack first"
+
+# An existing instance keeps its SG: top the nmap-service rule up (idempotent).
+if [ -n "$INSTANCE_ID" ] && [ -n "$TARGET_SG_ID" ]; then allow_nmap "$TARGET_SG_ID"; fi
+
 CREATED=0
 PASSWORD=""
 case "$STATE" in
@@ -134,6 +161,7 @@ case "$STATE" in
     else
       log "security group $TARGET_SG_NAME already exists: $TARGET_SG_ID"
     fi
+    allow_nmap "$TARGET_SG_ID"
     SUBNET_ID="$(none_if_empty "$(awsr ec2 describe-subnets \
       --filters "Name=vpc-id,Values=$VPC_ID" Name=default-for-az,Values=true \
       --query 'Subnets[0].SubnetId' --output text)")"
@@ -255,7 +283,7 @@ read -r PRIVATE_IP PUBLIC_IP < <(awsr ec2 describe-instances --instance-ids "$IN
   echo "  tcp/8443  nginx HTTPS with a weak 1024-bit Diffie-Hellman group (ssl-dh-params)"
   echo "  tcp/21    vsftpd with anonymous read-only access (ftp-anon)"
   echo "  tcp/22    sshd with password login (needed by the scanner)"
-  echo "All ports are open ONLY to ${INTERNAL_SG_NAME}; for demos only."
+  echo "All ports are open ONLY to ${INTERNAL_SG_NAME} and ${NMAP_SG_NAME}; for demos only."
   echo
   echo "Use the PRIVATE IP, not the public one (${PUBLIC_IP}): nmap-service SSHes into the target"
   echo "and scans that same IP (a self-scan), and AWS gives no hairpin NAT for a public IP."

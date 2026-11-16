@@ -55,6 +55,29 @@ variable "ssh_command_timeout_secs" {
   }
 }
 
+variable "local_scan_timeout_secs" {
+  description = "nmap-service timeout in seconds of a network-mode (local nmap, no SSH) scan, passed as MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS. It also sizes the requests visibility timeout."
+  type        = number
+  default     = 900
+
+  validation {
+    condition     = var.local_scan_timeout_secs > 0 && var.local_scan_timeout_secs + 60 <= 43200
+    error_message = "local_scan_timeout_secs must be positive and keep the timeout + 60 within the 12-hour SQS visibility limit."
+  }
+}
+
+variable "nvd_enrichment_budget_secs" {
+  description = "Seconds the requests visibility timeout budgets for NVD enrichment after the scan (nmap-service enables it in both modes; without an NVD API key NVD allows about 5 requests per 30 s). nmap-service has no NVD timeout variable, so this only sizes the queue."
+  type        = number
+  default     = 300
+
+  validation {
+    # SQS caps the visibility timeout at 12 hours.
+    condition     = var.nvd_enrichment_budget_secs > 0 && max(var.ssh_connect_timeout_secs + var.ssh_command_timeout_secs, var.local_scan_timeout_secs) + var.nvd_enrichment_budget_secs + 60 <= 43200
+    error_message = "nvd_enrichment_budget_secs must be positive and keep the longest scan timeout + budget + 60 within the 12-hour SQS visibility limit."
+  }
+}
+
 variable "security_events_encryption" {
   description = "Server-side encryption of the security-events Kinesis stream: KMS (AWS-managed key alias/aws/kinesis) or NONE."
   type        = string
@@ -74,5 +97,27 @@ variable "admin_bootstrap_emails" {
   validation {
     condition     = alltrue([for e in var.admin_bootstrap_emails : can(regex("^[^@\\s,]+@[^@\\s,]+\\.[^@\\s,]+$", e))])
     error_message = "Every admin_bootstrap_emails entry must be an email address (no commas or spaces)."
+  }
+}
+
+variable "network_scan_emails" {
+  description = "Emails allowed to start IP-only (network mode) scans, passed to user-service as NETWORK_SCAN_EMAILS. The list is authoritative: a user has the network_scan permission if and only if their email is here (empty = nobody). Pass it at apply time (TF_VAR_network_scan_emails) instead of committing it."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for e in var.network_scan_emails : can(regex("^[^@\\s,]+@[^@\\s,]+\\.[^@\\s,]+$", e))])
+    error_message = "Every network_scan_emails entry must be an email address (no commas or spaces)."
+  }
+}
+
+variable "network_scan_allowed_cidrs" {
+  description = "Optional CIDR allowlist for network-mode scan targets, passed to the gateway as NETWORK_SCAN_ALLOWED_CIDRS. Empty (default) leaves the variable unset, so the gateway accepts any target outside its denylist."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for c in var.network_scan_allowed_cidrs : can(cidrhost(c, 0))])
+    error_message = "Every network_scan_allowed_cidrs entry must be a valid CIDR block such as 172.31.0.0/16."
   }
 }

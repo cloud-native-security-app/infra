@@ -6,6 +6,7 @@ locals {
   alb_name         = "${var.project}-alb"
   alb_sg_name      = "${var.project}-alb-sg"
   internal_sg_name = "${var.project}-internal-sg"
+  nmap_sg_name     = "${var.project}-nmap-sg"
   log_prefix       = "/ecs/${var.project}"
 
   # Learner Lab cannot create IAM roles; looked up in iam.tf.
