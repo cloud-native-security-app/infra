@@ -105,8 +105,9 @@ done
 [ "$(count 'FilterPolicy')" = 1 ] || err "expected exactly 1 FilterPolicy, got $(count 'FilterPolicy')"
 rg -q -F -- '{"routing_key":[{"prefix":"scan.outcome."}]}' "$LOG" || err "outcomes filter policy missing or different"
 
-# 6. visibility timeouts: requests = connect + command + 60 (defaults 10 + 900), others 30
-rg -q -- 'VisibilityTimeout[^0-9]+970[^0-9]' "$LOG" || err "requests visibility timeout is not 970"
+# 6. visibility timeouts: requests = max(connect + command, local scan) + NVD budget + 60
+#    (defaults max(10 + 900, 900) + 300 + 60), others 30
+rg -q -- 'VisibilityTimeout[^0-9]+1270[^0-9]' "$LOG" || err "requests visibility timeout is not 1270"
 [ "$(count 'VisibilityTimeout')" = 3 ] || err "expected 3 VisibilityTimeout settings (main queues), got $(count 'VisibilityTimeout')"
 [ "$(rg -c -- 'VisibilityTimeout[^0-9]+30[^0-9]' "$LOG" || echo 0)" = 2 ] || err "cancellations/outcomes visibility timeout is not 30"
 
@@ -114,8 +115,17 @@ rg -q -- 'VisibilityTimeout[^0-9]+970[^0-9]' "$LOG" || err "requests visibility 
 LOG="$WORK/custom.log"
 : >"$LOG"
 PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$LOG" LOCALSTACK_INIT_MARKER="$WORK/custom.marker" \
-  SCAN_SSH_CONNECT_TIMEOUT_SECS=5 SCAN_SSH_COMMAND_TIMEOUT_SECS=300 bash "$TARGET" >/dev/null 2>&1 || err "custom timeouts: nonzero exit"
-rg -q -- 'VisibilityTimeout[^0-9]+365[^0-9]' "$LOG" || err "custom timeouts: expected 365 (5 + 300 + 60)"
+  SCAN_SSH_CONNECT_TIMEOUT_SECS=5 SCAN_SSH_COMMAND_TIMEOUT_SECS=300 SCAN_LOCAL_TIMEOUT_SECS=100 NVD_ENRICHMENT_BUDGET_SECS=0 \
+  bash "$TARGET" >/dev/null 2>&1 || err "custom timeouts: nonzero exit"
+rg -q -- 'VisibilityTimeout[^0-9]+365[^0-9]' "$LOG" || err "custom timeouts: expected 365 (max(5 + 300, 100) + 0 + 60)"
+
+# 7b. the local network-mode timeout wins when it is the longest scan
+LOG="$WORK/local.log"
+: >"$LOG"
+PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$LOG" LOCALSTACK_INIT_MARKER="$WORK/local.marker" \
+  SCAN_SSH_CONNECT_TIMEOUT_SECS=5 SCAN_SSH_COMMAND_TIMEOUT_SECS=300 SCAN_LOCAL_TIMEOUT_SECS=600 NVD_ENRICHMENT_BUDGET_SECS=30 \
+  bash "$TARGET" >/dev/null 2>&1 || err "local timeout: nonzero exit"
+rg -q -- 'VisibilityTimeout[^0-9]+690[^0-9]' "$LOG" || err "local timeout: expected 690 (max(5 + 300, 600) + 30 + 60)"
 
 # 8. idempotent: a second run succeeds and issues the same commands
 PATH="$WORK/bin:$PATH" FAKE_AWSLOCAL_LOG="$WORK/second.log" LOCALSTACK_INIT_MARKER="$WORK/base.marker" \

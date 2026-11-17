@@ -14,9 +14,11 @@ services:
       SERVICES: sns,sqs,kinesis
       AWS_DEFAULT_REGION: us-east-1
       # El hook calcula el visibility timeout de la cola de solicitudes con
-      # los mismos timeouts SSH que recibe nmap-service.
+      # los mismos timeouts (SSH y escaneo local) que recibe nmap-service.
       SCAN_SSH_CONNECT_TIMEOUT_SECS: "10"
       SCAN_SSH_COMMAND_TIMEOUT_SECS: "${SCAN_SSH_COMMAND_TIMEOUT_SECS:-300}"
+      SCAN_LOCAL_TIMEOUT_SECS: "${SCAN_LOCAL_TIMEOUT_SECS:-900}"
+      NVD_ENRICHMENT_BUDGET_SECS: "300"
     volumes:
       - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/localstack-init.sh:ro
     healthcheck:
