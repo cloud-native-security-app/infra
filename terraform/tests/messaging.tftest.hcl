@@ -81,8 +81,12 @@ run "requests_queue_timeouts_and_retention" {
     error_message = "visibility = SSH connect + SSH command timeout + NVD enrichment budget + margin (Q1)"
   }
   assert {
-    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].message_retention_seconds == 3600 && aws_sqs_queue.dlq["ms-nmap-scan-requests"].message_retention_seconds == 86400
-    error_message = "requests carry SSH credentials: 1 h retention, DLQ 24 h (Q4)"
+    condition     = aws_sqs_queue.consumer["ms-nmap-scan-requests"].message_retention_seconds == 4200 && aws_sqs_queue.dlq["ms-nmap-scan-requests"].message_retention_seconds == 86400
+    error_message = "requests carry SSH credentials: 70 min retention, DLQ 24 h (Q4)"
+  }
+  assert {
+    condition     = alltrue([for q in aws_sqs_queue.consumer : q.message_retention_seconds > 3 * q.visibility_timeout_seconds])
+    error_message = "every queue must keep a failing message longer than maxReceiveCount (3) visibility cycles, or it expires before reaching its DLQ"
   }
   assert {
     condition     = aws_sqs_queue.consumer["ms-nmap-scan-cancellations"].message_retention_seconds == 345600 && aws_sqs_queue.dlq["gateway-scan-outcomes"].message_retention_seconds == 1209600
