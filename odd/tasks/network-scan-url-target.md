@@ -33,7 +33,7 @@ It makes IP-only scanning usable for real targets without asking the user to res
 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
-| UT-01 | broker | `scan-request` schema: optional `target_host` (RFC 1123 hostname pattern, max 253) and `extra_port` (integer 1..65535), allowed only when `scan_mode` is `network`; `scan.requested` event payload gains optional `target_host`; valid and invalid examples; schema tests | none | [ ] |
+| UT-01 | broker | `scan-request` schema: optional `target_host` (RFC 1123 hostname pattern, max 253) and `extra_port` (integer 1..65535), allowed only when `scan_mode` is `network`; `scan.requested` event payload gains optional `target_host`; valid and invalid examples; schema tests | none | [x] 2026-11-17, broker `bf5dd78` (+ `54c481a`, `de34661`) |
 | UT-02 | nmap-service | `ScanRequest` accepts `target_host` and `extra_port`; network-mode argv covers the default ports plus `extra_port` (verify the exact nmap flags against the real binary) and passes `http.host` when `target_host` is set; contract parity tests; unit tests on the argv; testcontainers test still green | UT-01 | [ ] |
 | UT-03 | gateway | Network `target` parser (IP, hostname, `http`/`https` URL; default ports 80/443; extra port only when it is not in nmap's default set or always sent, decided in the task and recorded); resolver port with a timeout (real adapter on `tokio::net::lookup_host`, fake in tests); policy over every address; pin IPv4 first; publish `target_host` and `extra_port`; history target is the hostname; new 422 reasons `target_unresolvable` and `target_resolves_to_denied`; OpenAPI; tests | UT-01 | [ ] |
 | UT-04 | front | Network-mode validator for IP, hostname, or URL; help text; 422 messages for the new reasons; history and report show the hostname; contract-server mock; vitest and Playwright | UT-03 | [ ] |
@@ -51,6 +51,7 @@ Order: UT-01, UT-02, UT-03, UT-04, UT-05.
 | UT-04 | front | `feature/scan_target_url` |
 | UT-05 | infra | lab check, no branch unless fixes are needed |
 | plan | infra | `docs/network_scan_url_plan` |
+| UT-01 follow-up | infra | `fix/localstack_requests_visibility` (merge before broker) |
 
 ## Acceptance criteria
 
@@ -74,6 +75,11 @@ Forecast about 1,200 authored changed lines across four repos, one PR per repo (
 - 2026-11-17: plan created after mapping (broker schemas, gateway `submit_scan`, `network_scan.rs`, nmap-service `local_scanner.rs`, user-service `scan_history.target TEXT`, front `validateScanTarget.ts`). User decision: scan the whole host, not only the URL port.
 - Pending from the same session, not part of this plan: the scan page SSE fixes (keep-alive, replay of the current state on reconnect, `cancelled` status, cancel button on the scan page, ALB idle timeout). Proposed to the user, no answer yet.
 
+- 2026-11-17: UT-01 done (route: delegated writer). broker `feature/scan_target_host` `bf5dd78`: `target_host` (RFC 1123, max 253) and `extra_port` (1..65535), network-only via the existing allOf; `scan.requested` gains optional `target_host`; 5 examples; D-17. RED 4 failing, GREEN 52 unit.
+  - Pre-existing gap found: broker `tests/topology_parity.rs` still expected the SSH-only visibility formula that NS-05 replaced, and `infra/scripts/localstack-init.sh` still used it (970 s instead of 1270 s). Fixed inline: broker `54c481a` (`requests_visibility_secs` takes the local scan timeout and NVD budget), infra `fix/localstack_requests_visibility` `5a68ec2` (LocalStack formula, compose env, tests RED then GREEN).
+  - Review: high, granted by the user, 4 lenses. Finding (deterministic, introduced by NS-05 and already live in the lab): with visibility 1270 s, retention 3600 s and maxReceiveCount 3, a failing request expires before reaching the DLQ (3 x 1270 = 3810 s). User chose option A: requests retention 4200 s (70 min) plus an invariant test `retention > 3 x visibility` in both repos. broker `de34661` (topology, parity, docs, AGENTS.md rule), infra `f5e9d92` (`messaging.tf`, terraform test). `make verify` green in both.
+  - The correction was scope-changed (docs, AGENTS.md), so the user authorized a recovery; the successor review flagged only that infra lacked the changes (it sees the broker diff only). User chose to close it: both lineages abandoned (`operator_disposition`). Merge order: infra `fix/localstack_requests_visibility` before broker `feature/scan_target_host`; then `terraform apply` updates the lab queue retention.
+
 ## Next step
 
-UT-01 in broker.
+UT-02 in nmap-service.
