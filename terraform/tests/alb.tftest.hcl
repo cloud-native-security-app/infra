@@ -65,6 +65,10 @@ run "alb_is_public_in_default_subnets" {
     condition     = aws_lb.main.drop_invalid_header_fields
     error_message = "the ALB must drop invalid HTTP headers"
   }
+  assert {
+    condition     = aws_lb.main.idle_timeout == 300
+    error_message = "the ALB idle timeout must be 300 s so the scan status stream (SSE) survives quiet periods"
+  }
 }
 
 run "target_groups_match_06_alb" {
