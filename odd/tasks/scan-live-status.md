@@ -66,6 +66,8 @@ Forecast about 800 authored changed lines: gateway about 350, front about 400, i
 
 - 2026-11-18: SC-03 done (route: delegated writer, 20 files, +855/-35, mostly tests). front `feature/scan_page_cancel` `6dacd7c`: `cancelled` event is terminal and maps to CANCELADO; a terminal status is never overwritten; `markScanCancelled(id)` in the provider, also called from the history table; shared `describeCancelError`; "Cancelar escaneo" button on the scan page; `useScanStatusFallback` polls the history every 5 s while the stream is reconnecting or closed, or after 20 s without events, and stops at a terminal state; mock emits `cancelled` and holds 198.51.100.0/24 targets for e2e. RED: 19 tests failing; GREEN `npm run verify` (Playwright 76 passed; parent spot check: scan tests 112 passed). Review: RDD disabled for front. Gap: the polling fallback is covered by vitest only, not e2e.
 
+- 2026-11-18: gateway CI failed on `consumes_scan_outcomes_from_a_real_queue_and_relays_them_via_sse_in_order_until_terminal_state`: SC-01 rewrote two wire-JSON assertions as raw strings that kept the backslashes (`r#"\"status\":..."#`), so they never matched; the writer's "make verify passed" came from a background run and was wrong. Fixed in gateway `feb389e` (test-only); integration test 3/3 locally, foreground `make verify` exit 0, CI run 44251399868 green.
+
 ## Next step
 
 Push the three branches and open PRs (user decision): infra `feature/alb_idle_timeout`, gateway `feature/scan_sse_resilience`, front `feature/scan_page_cancel`, plus this plan. Then SC-04 lab check (deploy gateway before front; `terraform apply` for the ALB idle timeout).
