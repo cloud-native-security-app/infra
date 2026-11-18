@@ -33,7 +33,7 @@ Observed in the lab on 2026-11-17:
 | SC-01 | gateway | SSE `keep_alive` (15 s); registry keeps the last event per scan (bounded size, terminal entries expire) and replays it to a new subscriber, then closes if terminal; `failed` after a cancel request is sent as `cancelled`; OpenAPI note; tests | none | [x] 2026-11-18, gateway `25d62d7` |
 | SC-02 | infra | ALB `idle_timeout = 300`; terraform test | none | [x] 2026-11-18, infra `67aed8f` |
 | SC-03 | front | Cancel button on the scan page (reuses `cancelScan` and its error messages); provider action to mark the scan cancelled; `cancelled` status label; history polling fallback while the stream is down; vitest and Playwright | SC-01 | [x] 2026-11-18, front `6dacd7c` |
-| SC-04 | infra | Lab deploy and check: a scan that outlives 60 s finishes on the page; cancel from the scan page shows "Cancelado"; reload during a scan shows the current state | SC-01..SC-03 | [ ] |
+| SC-04 | infra | Lab deploy and check: a scan that outlives 60 s finishes on the page; cancel from the scan page shows "Cancelado"; reload during a scan shows the current state | SC-01..SC-03 | [x] 2026-11-18, lab check passed |
 
 ## Branches
 
@@ -68,6 +68,8 @@ Forecast about 800 authored changed lines: gateway about 350, front about 400, i
 
 - 2026-11-18: gateway CI failed on `consumes_scan_outcomes_from_a_real_queue_and_relays_them_via_sse_in_order_until_terminal_state`: SC-01 rewrote two wire-JSON assertions as raw strings that kept the backslashes (`r#"\"status\":..."#`), so they never matched; the writer's "make verify passed" came from a background run and was wrong. Fixed in gateway `feb389e` (test-only); integration test 3/3 locally, foreground `make verify` exit 0, CI run 44251399868 green.
 
+- 2026-11-18: SC-04 done (route: inline, user-authorized lab deploy). PRs merged (gateway #38, infra #40, front #39, infra #41). `terraform apply` resumed the lab and set the ALB `idle_timeout.timeout_seconds` to 300 (read back with `describe-load-balancer-attributes`); gateway then front deployed; `verify-stack.sh` 11 passed, 0 failed. UI checks by the user, all passed: a 2-minute scan ends as Completado with no "sin conexión"; "Cancelar escaneo" on the scan page shows Cancelado at once; reload mid-scan shows the current state and then Completado; cancelling from the history updates the scan page; keep-alive comments visible in the stream. Lab paused afterwards (0 tasks, 0 instances, weak target destroyed).
+
 ## Next step
 
-Push the three branches and open PRs (user decision): infra `feature/alb_idle_timeout`, gateway `feature/scan_sse_resilience`, front `feature/scan_page_cancel`, plus this plan. Then SC-04 lab check (deploy gateway before front; `terraform apply` for the ALB idle timeout).
+Feature complete. Follow-ups: route-level keep-alive test and `from_outcome` matrix test (SC-01 review suggestions); e2e coverage for the history polling fallback; the cancel mark lives in gateway memory, so after a restart a cancelled scan shows as failed until the history poll.
