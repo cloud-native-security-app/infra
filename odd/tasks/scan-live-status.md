@@ -30,7 +30,7 @@ Observed in the lab on 2026-11-17:
 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
-| SC-01 | gateway | SSE `keep_alive` (15 s); registry keeps the last event per scan (bounded size, terminal entries expire) and replays it to a new subscriber, then closes if terminal; `failed` after a cancel request is sent as `cancelled`; OpenAPI note; tests | none | [ ] |
+| SC-01 | gateway | SSE `keep_alive` (15 s); registry keeps the last event per scan (bounded size, terminal entries expire) and replays it to a new subscriber, then closes if terminal; `failed` after a cancel request is sent as `cancelled`; OpenAPI note; tests | none | [x] 2026-11-18, gateway `25d62d7` |
 | SC-02 | infra | ALB `idle_timeout = 300`; terraform test | none | [x] 2026-11-18, infra `67aed8f` |
 | SC-03 | front | Cancel button on the scan page (reuses `cancelScan` and its error messages); provider action to mark the scan cancelled; `cancelled` status label; history polling fallback while the stream is down; vitest and Playwright | SC-01 | [ ] |
 | SC-04 | infra | Lab deploy and check: a scan that outlives 60 s finishes on the page; cancel from the scan page shows "Cancelado"; reload during a scan shows the current state | SC-01..SC-03 | [ ] |
@@ -62,6 +62,8 @@ Forecast about 800 authored changed lines: gateway about 350, front about 400, i
 
 - 2026-11-18: SC-02 done (route: inline, 2 files). infra `feature/alb_idle_timeout` `67aed8f`: `aws_lb.main.idle_timeout = 300` and an assertion in `alb.tftest.hcl`. RED: assertion failed; GREEN: `make verify` 71 passed. Review: medium, under budget.
 
+- 2026-11-18: SC-01 done (route: delegated writer, 7 files, +540/-105; over the 400-line heuristic because `realtime.rs` was rewritten). gateway `feature/scan_sse_resilience` `25d62d7`: SSE keep-alive comment every 15 s (`sse_with_keep_alive`); one `Mutex` holds channels and a last-event cache (1024 scans, terminal entries expire after 15 min, `RealtimeRegistry::with_limits`), so read-last plus subscribe is atomic; a new subscriber gets the last event first and the stream ends if it is terminal; browser-facing `ScanLiveEvent` sends `cancelled` (with `reason`) when the outcome is `failed` after a cancel request; user-service and broker contracts unchanged; D-21. RED: 2 late-subscriber tests failed; GREEN `make verify` exit 0 (parent spot check: realtime 12, relay 10 passed). Review: medium, granted, 1 consolidated lens, approved and acknowledged; suggestions: route-level keep-alive and `from_outcome` matrix tests. Limits: an unknown or expired scan gets nothing (stream stays open); the cancel mark is in memory, so after a gateway restart a cancelled scan shows as `failed`.
+
 ## Next step
 
-SC-01 (gateway, delegated writer in progress), then SC-03.
+SC-03 in the front.
