@@ -17,6 +17,9 @@ resource "aws_lb" "main" {
   subnets                    = local.subnet_ids
   security_groups            = [aws_security_group.alb.id]
   drop_invalid_header_fields = true
+  # The scan status stream (SSE) can stay quiet between events; the gateway sends
+  # keep-alives every 15 s, and 300 s is a margin over the 60 s default.
+  idle_timeout = 300
 }
 
 resource "aws_lb_target_group" "app" {
