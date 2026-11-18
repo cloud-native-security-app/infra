@@ -86,6 +86,8 @@ Forecast about 1,200 authored changed lines across four repos, one PR per repo (
 
 - 2026-11-17: UT-04 done (route: delegated writer). front `feature/scan_target_url` `66f0d2e`: `validateNetworkScanTarget.ts` (IPv4, IPv6, hostname, http(s) URL; Spanish errors); `ScanForm` uses it in network mode, label "IP, hostname o URL a escanear", help text on whole-host scan; `describeSubmitError` maps `target_unresolvable`, `target_resolves_to_denied` and a network-mode 400; mock simulates `*.invalid` and `localhost`. RED: missing module, 4 + 3 failing; GREEN `npm run verify` (vitest, build, Playwright 75 passed; parent spot check: validator 32 passed). Review: RDD disabled for front (clone-local), tier medium; writer self-verification plus parent spot check.
 
+- 2026-11-18: gateway CI failed on `system_resolver_times_out_instead_of_hanging` (the flaky test flagged by the UT-03 review): `tokio::time::timeout` polls the lookup before the deadline, so with `Duration::ZERO` a fast `/etc/hosts` answer for `localhost` returned `Ok`. Fixed in gateway `5be5929`: `lookup_with_timeout` helper, tests use a never-answering and a failing lookup (30/30 local runs), `make verify` exit 0, CI run 44239184415 green. Review: medium, under budget.
+
 ## Next step
 
 UT-05: push the branches and open PRs (user decision), merge in order (infra `fix/localstack_requests_visibility`, broker, nmap-service, gateway, front, plan doc), then lab deploy with user authorization: `terraform apply` (retention 4200), push images nmap-service before gateway, then front; check a URL scan of the weak target by its private DNS name, a denied name, and the pending NS-06 UI checks; pause the lab.
