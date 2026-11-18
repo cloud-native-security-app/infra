@@ -31,7 +31,7 @@ Observed in the lab on 2026-11-17:
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
 | SC-01 | gateway | SSE `keep_alive` (15 s); registry keeps the last event per scan (bounded size, terminal entries expire) and replays it to a new subscriber, then closes if terminal; `failed` after a cancel request is sent as `cancelled`; OpenAPI note; tests | none | [ ] |
-| SC-02 | infra | ALB `idle_timeout = 300`; terraform test | none | [ ] |
+| SC-02 | infra | ALB `idle_timeout = 300`; terraform test | none | [x] 2026-11-18, infra `67aed8f` |
 | SC-03 | front | Cancel button on the scan page (reuses `cancelScan` and its error messages); provider action to mark the scan cancelled; `cancelled` status label; history polling fallback while the stream is down; vitest and Playwright | SC-01 | [ ] |
 | SC-04 | infra | Lab deploy and check: a scan that outlives 60 s finishes on the page; cancel from the scan page shows "Cancelado"; reload during a scan shows the current state | SC-01..SC-03 | [ ] |
 
@@ -60,6 +60,8 @@ Forecast about 800 authored changed lines: gateway about 350, front about 400, i
 
 - 2026-11-18: plan created from the 2026-11-17 mapping (gateway `api.rs` `scan_events` without keep-alive, `realtime.rs` drops events with no receiver and has no replay; front `useScanEvents.ts`, `ScanForm.tsx`, cancel only in `HistoryTable.tsx`; ALB without `idle_timeout`). User asked to implement it.
 
+- 2026-11-18: SC-02 done (route: inline, 2 files). infra `feature/alb_idle_timeout` `67aed8f`: `aws_lb.main.idle_timeout = 300` and an assertion in `alb.tftest.hcl`. RED: assertion failed; GREEN: `make verify` 71 passed. Review: medium, under budget.
+
 ## Next step
 
-SC-01 and SC-02.
+SC-01 (gateway, delegated writer in progress), then SC-03.
