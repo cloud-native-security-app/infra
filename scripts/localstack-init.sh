@@ -18,13 +18,18 @@ ACCOUNT="${LOCALSTACK_ACCOUNT_ID:-000000000000}"
 MARKER="${LOCALSTACK_INIT_MARKER:-/tmp/localstack-init.done}"
 CONNECT_TIMEOUT="${SCAN_SSH_CONNECT_TIMEOUT_SECS:-10}"
 COMMAND_TIMEOUT="${SCAN_SSH_COMMAND_TIMEOUT_SECS:-900}"
+LOCAL_SCAN_TIMEOUT="${SCAN_LOCAL_TIMEOUT_SECS:-900}"
+NVD_BUDGET="${NVD_ENRICHMENT_BUDGET_SECS:-300}"
 MAX_RECEIVE_COUNT=3
 STREAM_NAME="security-events"
 WAIT_ATTEMPTS="${KINESIS_WAIT_ATTEMPTS:-30}"
 WAIT_SLEEP="${KINESIS_WAIT_SLEEP_SECS:-1}"
 
-# A scan never outlives its SSH timeouts (same formula as terraform/messaging.tf).
-REQUESTS_VISIBILITY=$((CONNECT_TIMEOUT + COMMAND_TIMEOUT + 60))
+# The longest scan (SSH timeouts or the local network-mode nmap timeout), plus the
+# NVD enrichment budget, plus a margin (same formula as terraform/messaging.tf).
+SSH_SCAN=$((CONNECT_TIMEOUT + COMMAND_TIMEOUT))
+LONGEST_SCAN=$((SSH_SCAN > LOCAL_SCAN_TIMEOUT ? SSH_SCAN : LOCAL_SCAN_TIMEOUT))
+REQUESTS_VISIBILITY=$((LONGEST_SCAN + NVD_BUDGET + 60))
 
 # The healthcheck reads the marker, so drop a stale one from a previous run first.
 rm -f "$MARKER"

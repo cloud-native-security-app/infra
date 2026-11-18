@@ -16,8 +16,9 @@ locals {
       # or the local scan timeout (network mode), whichever is longer, plus the NVD enrichment
       # budget (both modes enrich after the scan) and a margin.
       visibility_timeout = max(var.ssh_connect_timeout_secs + var.ssh_command_timeout_secs, var.local_scan_timeout_secs) + var.nvd_enrichment_budget_secs + 60
-      # Requests carry SSH credentials: keep them briefly (Q4).
-      retention     = 3600
+      # Requests carry SSH credentials: keep them briefly (Q4), but longer than
+      # maxReceiveCount (3) visibility cycles so a failing request still reaches its DLQ.
+      retention     = 4200
       dlq_retention = 24 * 3600
       filter_policy = null
     }
