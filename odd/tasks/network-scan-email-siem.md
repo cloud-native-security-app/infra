@@ -73,7 +73,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 
 | ID | Repo | Task | Depends on | Done |
 |---|---|---|---|---|
-| EM-01 | user-service | Report email rendering: HTML summary (target, date, mode, severity counts, top 10 findings) and plain-text alternative, JSON attachment identical to the browser export; pure functions with snapshot tests | none | [ ] |
+| EM-01 | user-service | Report email rendering: HTML summary (target, date, mode, severity counts, top 10 findings) and plain-text alternative, JSON attachment identical to the browser export; pure functions with snapshot tests | none | [x] 2026-11-21, user-service `ed3b55c` |
 | EM-02 | user-service | `Mailer` port with an SMTP adapter (`lettre`, STARTTLS 587) and an in-memory fake; when `update_scan_outcome` stores `completed`, send the report to the account email in the background, once per scan (`report_emailed_at` migration), bounded retry, never failing the update; SMTP unset disables sending; `report.emailed` and `report.email_failed` audit events; tests with the fake and a testcontainers SMTP sink (Mailpit) | EM-01 | [ ] |
 | EM-03 | gateway | Expose the email status of a scan (`sent`, `failed`, `disabled`, `pending`) in the report and history payloads; OpenAPI; tests | EM-02 | [ ] |
 | EM-04 | front | Report shows "Informe enviado a <email>" or why it was not sent; guards and mock; vitest and Playwright | EM-03 | [ ] |
@@ -169,4 +169,4 @@ Order:
 
 ## Next step
 
-Part 1 complete (NS-06 UI checks passed on 2026-11-18 during UT-05 of `network-scan-url-target.md`). Part 2 (EM-01) next; SMTP provider resolved (Gmail, decision 3).
+Part 1 complete (NS-06 UI checks passed on 2026-11-18 during UT-05 of `network-scan-url-target.md`). Part 2: EM-01 done 2026-11-21 (user-service `ed3b55c`, branch `feature/report_email_render`, route: delegated writer, Strict TDD RED = unresolved imports, `make verify` exit 0, `cargo test report_email` 8 passed, parent spot check 8 passed; RDD assess high, declined (user policy)). `render_report_email` in `src/report_email/` mirrors `front/src/features/report/buildReportExport.ts` (`reporte-escaneo-<scanId>.json`, 2-space JSON). Known gaps: serde_json sorts keys (browser keeps server order; same content); no `score` field, so top 10 sorts by severity then id; `fixed` findings are left out of counts and list like the report view but kept in the attachment. EM-02 next.
