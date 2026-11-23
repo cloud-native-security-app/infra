@@ -58,6 +58,34 @@ override_resource {
 }
 
 override_resource {
+  target = aws_ssm_parameter.smtp["host"]
+  values = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-host"
+  }
+}
+
+override_resource {
+  target = aws_ssm_parameter.smtp["port"]
+  values = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-port"
+  }
+}
+
+override_resource {
+  target = aws_ssm_parameter.smtp["username"]
+  values = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-username"
+  }
+}
+
+override_resource {
+  target = aws_ssm_parameter.smtp["password"]
+  values = {
+    arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-password"
+  }
+}
+
+override_resource {
   target = aws_ssm_parameter.gateway_shared_secret
   values = {
     arn = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway-shared-secret"
@@ -181,7 +209,7 @@ run "no_secret_in_plain_environment" {
   assert {
     condition = alltrue([for k, td in aws_ecs_task_definition.app :
       length([for e in try(jsondecode(td.container_definitions)[0].environment, []) :
-        e if contains(["GATEWAY_SHARED_SECRET", "CREDENTIALS_ENCRYPTION_KEY", "SESSION_SIGNING_KEY", "DATABASE_URL", "MS_USUARIOS_SHARED_SECRET", "EVENTS_SERVICE_SHARED_SECRET"], e.name)
+        e if contains(["GATEWAY_SHARED_SECRET", "CREDENTIALS_ENCRYPTION_KEY", "SESSION_SIGNING_KEY", "DATABASE_URL", "MS_USUARIOS_SHARED_SECRET", "EVENTS_SERVICE_SHARED_SECRET", "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD"], e.name)
       ]) == 0
     ])
     error_message = "secret-bearing variables must come from `secrets`, never `environment`"
@@ -213,6 +241,10 @@ run "secrets_come_from_the_ssm_parameters" {
         DATABASE_URL               = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/database-url"
         GATEWAY_SHARED_SECRET      = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/gateway-shared-secret"
         CREDENTIALS_ENCRYPTION_KEY = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/credentials-encryption-key"
+        SMTP_HOST                  = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-host"
+        SMTP_PORT                  = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-port"
+        SMTP_USERNAME              = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-username"
+        SMTP_PASSWORD              = "arn:aws:ssm:us-east-1:123456789012:parameter/security-app/user-service/smtp-password"
       }
     )
     error_message = "user-service secrets come from the SSM parameters"
@@ -575,5 +607,32 @@ run "nmap_local_scan_timeout_follows_the_variable" {
       { for e in jsondecode(aws_ecs_task_definition.app["nmap-service"].container_definitions)[0].environment : e.name => e.value }["MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS"] == "1200"
     )
     error_message = "MS_NMAP_LOCAL_SCAN_TIMEOUT_SECS comes from local_scan_timeout_secs"
+  }
+}
+
+run "smtp_settings_live_only_in_ssm" {
+  command = apply
+
+  assert {
+    condition = (
+      aws_ssm_parameter.smtp["host"].name == "/security-app/user-service/smtp-host" &&
+      aws_ssm_parameter.smtp["port"].name == "/security-app/user-service/smtp-port" &&
+      aws_ssm_parameter.smtp["username"].name == "/security-app/user-service/smtp-username" &&
+      aws_ssm_parameter.smtp["password"].name == "/security-app/user-service/smtp-password" &&
+      alltrue([for p in aws_ssm_parameter.smtp : p.type == "SecureString"])
+    )
+    error_message = "the four SMTP settings are SSM SecureStrings under /security-app/user-service/"
+  }
+  assert {
+    condition     = alltrue([for p in aws_ssm_parameter.smtp : p.value == " "])
+    error_message = "Terraform only seeds a blank placeholder (email disabled); scripts/set-smtp.sh writes the real values"
+  }
+  assert {
+    condition     = length([for e in jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].environment : e if startswith(e.name, "SMTP_")]) == 0
+    error_message = "no SMTP setting may be a plain environment variable"
+  }
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].secrets != null && aws_ecs_task_definition.app["user-service"].execution_role_arn == data.aws_iam_role.lab.arn
+    error_message = "LabRole is the execution role, so it reads the SMTP parameters (no IAM policy to manage in the lab)"
   }
 }

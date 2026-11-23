@@ -67,6 +67,22 @@ resource "aws_ssm_parameter" "google_oauth" {
   }
 }
 
+# SMTP settings of user-service (report email). Terraform only seeds a blank placeholder: a
+# single space, because SSM rejects an empty value and user-service treats a blank SMTP_HOST
+# as "email disabled". scripts/set-smtp.sh writes the real values (Gmail App Password), so the
+# password never enters Terraform or its state.
+resource "aws_ssm_parameter" "smtp" {
+  for_each = toset(["host", "port", "username", "password"])
+
+  name  = "/${var.project}/user-service/smtp-${each.key}"
+  type  = "SecureString"
+  value = " "
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_ssm_parameter" "database_url" {
   name  = "/${var.project}/user-service/database-url"
   type  = "SecureString"
@@ -96,6 +112,10 @@ locals {
         DATABASE_URL               = aws_ssm_parameter.database_url.arn
         GATEWAY_SHARED_SECRET      = aws_ssm_parameter.gateway_shared_secret.arn
         CREDENTIALS_ENCRYPTION_KEY = aws_ssm_parameter.credentials_encryption_key.arn
+        SMTP_HOST                  = aws_ssm_parameter.smtp["host"].arn
+        SMTP_PORT                  = aws_ssm_parameter.smtp["port"].arn
+        SMTP_USERNAME              = aws_ssm_parameter.smtp["username"].arn
+        SMTP_PASSWORD              = aws_ssm_parameter.smtp["password"].arn
       }
     }
     # Internal read side of the security-events stream (Kinesis consumer, admin metrics and SSE).

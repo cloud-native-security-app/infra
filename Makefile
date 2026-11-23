@@ -9,6 +9,7 @@ verify:
 	bash scripts/test-bootstrap-namespace.sh
 	bash scripts/test-refresh-gh-secrets.sh
 	bash scripts/test-set-google-oauth.sh
+	bash scripts/test-set-smtp.sh
 	bash scripts/test-push-images.sh
 	bash scripts/test-create-test-target.sh
 	bash scripts/test-create-weak-target.sh
