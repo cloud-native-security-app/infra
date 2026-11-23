@@ -111,6 +111,24 @@ GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
 
 Without those variables it reads the untracked local file `deploy/aws/.state/google_oauth.env` (left by the retired scripts; gitignored, never committed). Values reach `aws` through 0600 temp files, never argv, and are never printed. The Google redirect URI is the `gateway_public_url` output plus `/auth/callback`. `--dry-run` validates without writing. `make verify` tests it with `scripts/test-set-google-oauth.sh`.
 
+## Report email (SMTP)
+
+user-service emails the report to the scan owner when a scan completes. Terraform creates `/security-app/user-service/smtp-host`, `smtp-port`, `smtp-username` and `smtp-password` as SSM SecureStrings holding a blank placeholder (one space, because SSM rejects an empty value) and ignores later value changes, so the password never enters Terraform or its state. ECS injects them through `secrets` as `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME` and `SMTP_PASSWORD`; LabRole is the execution role, so it already reads them. A blank `SMTP_HOST` disables the email: scans keep working and the history reports `disabled`. Until you run the steps below, email stays off.
+
+Lab provider: a dedicated Gmail account (about 500 messages a day, enough for academic use).
+
+1. Create the Gmail account and turn on 2-Step Verification.
+2. In the Google account security page, create an App Password (16 characters). Use it as the SMTP password, never the account password.
+3. After `apply`, store the settings and redeploy user-service:
+
+```sh
+SMTP_HOST=smtp.gmail.com SMTP_USERNAME=dedicated.account@gmail.com scripts/set-smtp.sh
+```
+
+The script prompts for the password without echo (or reads it from stdin, or `SMTP_PASSWORD`); `SMTP_PORT` defaults to 587 (STARTTLS, the default `SMTP_TLS`). Values reach `aws` through 0600 temp files, never argv, and are never printed. The sender defaults to the username. `--dry-run` validates without writing; `--disable` restores the blank placeholders and redeploys, turning the email off. The same by hand: `aws ssm put-parameter --name /security-app/user-service/smtp-password --type SecureString --overwrite --value file://<tmpfile>` for each parameter, then `aws ecs update-service --cluster security-app-cluster-v2 --service user-service --force-new-deployment`. `make verify` tests the script with `scripts/test-set-smtp.sh`.
+
+Local development: `docker compose up` starts Mailpit (`axllent/mailpit:v1.21`) and points user-service at it (`SMTP_HOST=mailpit`, port 1025, `SMTP_TLS=none`, no credentials). Read the mail at http://localhost:8025 (bound to localhost).
+
 ## Admin users
 
 `admin_bootstrap_emails` (list, default empty) reaches user-service as `ADMIN_BOOTSTRAP_EMAILS`, comma separated. The list is authoritative: user-service grants the `admin` role to those emails and revokes it from everyone else at startup and on profile provisioning, so an empty list means no admins and the `/admin` panel is unreachable. Pass it at apply time instead of committing it:

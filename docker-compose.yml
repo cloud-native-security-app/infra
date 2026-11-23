@@ -59,6 +59,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://postgres:devpassword@postgres:5432/usuarios
       HTTP_HOST: 0.0.0.0
@@ -79,8 +81,21 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       SECURITY_EVENTS_STREAM_NAME: "security-events"
+      # Correo del informe contra Mailpit (sumidero local, sin TLS ni credenciales).
+      # Bandeja en http://localhost:8025. En AWS el host real viene de SSM.
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_TLS: none
+      SMTP_FROM: no-reply@security-app.local
     ports:
       - "8081:8080"
+
+  # Sumidero SMTP de desarrollo: recibe el correo del informe sin enviarlo fuera.
+  # Bandeja web solo en localhost.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "127.0.0.1:8025:8025"
 
   # Lado de lectura del stream de eventos: consume Kinesis (LocalStack) y solo
   # responde al gateway, que envia el secreto compartido en X-Gateway-Secret.
