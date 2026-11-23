@@ -58,7 +58,7 @@ Already done: the SR-02 OpenAPI finding (404 documented when the route is off). 
 
 | ID | Repo | Task | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| RF-01 | user-service | Reaper for stuck report emails: periodically re-claim `pending` rows older than a threshold (e.g. 10 min, configurable) and retry the send. Keep it once per scan (atomic claim). Tests: a row left `pending` gets sent; a fresh `pending` row is left alone; two reapers do not both send | none | [ ] |
+| RF-01 | user-service | Reaper for stuck report emails: periodically re-claim `pending` rows older than a threshold (e.g. 10 min, configurable) and retry the send. Keep it once per scan (atomic claim). Tests: a row left `pending` gets sent; a fresh `pending` row is left alone; two reapers do not both send | none | [x] 2026-11-23, user-service `acc6e1b` `f28fabe` |
 | RF-02 | user-service | `SMTP_TLS=none` with `SMTP_USERNAME` or `SMTP_PASSWORD` set is rejected (or warned, see Decisions). Tests for both cases plus Mailpit without credentials | none | [ ] |
 | RF-03 | user-service | An unusable SMTP config (bad port, bad TLS value, missing `SMTP_FROM` with a host) logs an error at startup naming the variable, instead of silently disabling email. Tests | none | [ ] |
 | RF-04 | gateway | SIEM publish retry keeps one `event_id` (verify, fix if not) | none | [ ] |
@@ -70,6 +70,9 @@ Already done: the SR-02 OpenAPI finding (404 documented when the route is off). 
 | RF-10 | infra | `siem.tftest.hcl` asserts `siem_ingest_token_parameter`: null when disabled, the parameter name when enabled | none | [ ] |
 | RF-11 | lab | Verify in the lab: SSM accepts the single-space placeholder; the report email arrives through Gmail; SIEM end to end (flag on, sample POST with the token appears in "Alertas IDS", wrong token gets 401) | infra #52 merged, Gmail App Password | [ ] |
 | RF-12 | docs | Check the severity bands (0-6, 7-9, 10-12, 13-15) and the README Wazuh syntax (`<integration>`, `integratord` arguments, Suricata `<localfile>`, `data.alert.signature`) against the Wazuh docs; correct D-18 or the README if they differ | none | [ ] |
+| RF-13 | user-service | Bound one SMTP attempt with an overall deadline (connect through DATA) and validate that `after` exceeds the deadline plus the largest retry backoff, so a live sender is never judged stale. From the `f28fabe` review (2 warnings) | RF-01 | [ ] |
+| RF-14 | user-service | Write `failed` and the `report.email_failed` audit in one transaction in `fail_unrecoverable`; fix its log message for a missing owner; test that a transient error (e.g. `find_user`) leaves the row `pending` with no audit. From the `f28fabe` review | RF-01 | [ ] |
+| RF-15 | user-service, nmap-service | Contract drift: `SecurityEvent` does not know `siem.alert`, so `security_event_contract` fails locally against broker develop (CI skips it because it does not check out `../broker`). Add the variant or ignore unknown types explicitly; consider checking out broker in CI | none | [ ] |
 
 ## Branches
 
@@ -100,4 +103,6 @@ Already done: the SR-02 OpenAPI finding (404 documented when the route is off). 
 
 ## Progress
 
-Created 2026-11-23 from the review findings recorded in `odd/tasks/network-scan-email-siem.md`. Nothing started. Next: RF-01.
+Created 2026-11-23 from the review findings recorded in `odd/tasks/network-scan-email-siem.md`.
+
+RF-01 done 2026-11-23 (user-service `acc6e1b` + `f28fabe`, branch `fix/report_email_reaper`; route: delegated writer, two commits; Strict TDD RED = missing `ReaperPolicy`/`reap_once`/`reclaim_stale`, then the slow-send, queued-batch, zero-interval, minimum-threshold, `touch` and unreadable-row tests; `cargo test --test report_email -- --include-ignored` 14 passed (parent spot check); `make verify` stops at the known `security_event_contract` failure (RF-15), the remaining steps pass when run by hand). New column `report_email_claimed_at` (falls back to `updated_at` for older rows); `FOR UPDATE SKIP LOCKED` batches of 20; `REPORT_EMAIL_REAPER_AFTER_SECS` (default 600, minimum 120) and `REPORT_EMAIL_REAPER_INTERVAL_SECS` (default 60, zero clamped to 1 s); the reaper runs only with a mailer; a heartbeat refreshes the claim of the current and queued rows before every attempt; unreadable stored data or a missing owner marks the row `failed` and audits it; transient DB errors stay `pending`. Delivery is at-least-once (README). RDD medium, granted twice: `acc6e1b` approved (review-12a369d14f21246c) with 2 warnings and 1 suggestion, fixed in `f28fabe`; `f28fabe` approved (review-4c190f581b30a8e8) with 2 warnings and 2 suggestions, now RF-13 and RF-14. Next: RF-02 (decision pending: reject or warn).
