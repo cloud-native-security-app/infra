@@ -41,6 +41,24 @@ resource "aws_ssm_parameter" "events_service_shared_secret" {
   value = random_password.events_service_shared_secret.result
 }
 
+# Bearer token of the SIEM ingestion route (POST /api/integrations/siem/alerts). Only exists
+# while siem_enabled: without it the gateway does not mount the route (it answers 401 like any
+# unknown path). Wazuh's integratord script reads it from SSM; see README.
+resource "random_password" "siem_ingest_token" {
+  count = var.siem_enabled ? 1 : 0
+
+  length  = 48
+  special = false
+}
+
+resource "aws_ssm_parameter" "siem_ingest_token" {
+  count = var.siem_enabled ? 1 : 0
+
+  name  = "/${var.project}/gateway/siem-ingest-token"
+  type  = "SecureString"
+  value = random_password.siem_ingest_token[0].result
+}
+
 resource "aws_ssm_parameter" "credentials_encryption_key" {
   name  = "/${var.project}/user-service/credentials-encryption-key"
   type  = "SecureString"
@@ -124,13 +142,16 @@ locals {
       port            = 8080
       service_connect = "publish"
       target_group    = null
-      environment = {
+      environment = merge({
         HTTP_HOST                   = "0.0.0.0"
         HTTP_PORT                   = "8080"
         RUST_LOG                    = "info,events_service=debug,tower_http=debug"
         SECURITY_EVENTS_STREAM_NAME = aws_kinesis_stream.security_events.name
         AWS_REGION                  = var.region
-      }
+        },
+        # Unset = SIEM alerts are ignored (the service default is off).
+        var.siem_enabled ? { SIEM_ENABLED = "true" } : {}
+      )
       secrets = {
         GATEWAY_SHARED_SECRET = aws_ssm_parameter.events_service_shared_secret.arn
       }
@@ -188,13 +209,16 @@ locals {
           NETWORK_SCAN_ALLOWED_CIDRS = join(",", var.network_scan_allowed_cidrs)
         }
       )
-      secrets = {
+      secrets = merge({
         MS_USUARIOS_SHARED_SECRET    = aws_ssm_parameter.gateway_shared_secret.arn
         EVENTS_SERVICE_SHARED_SECRET = aws_ssm_parameter.events_service_shared_secret.arn
         SESSION_SIGNING_KEY          = aws_ssm_parameter.session_signing_key.arn
         GOOGLE_CLIENT_ID             = aws_ssm_parameter.google_oauth["client-id"].arn
         GOOGLE_CLIENT_SECRET         = aws_ssm_parameter.google_oauth["client-secret"].arn
-      }
+        },
+        # Set = the gateway mounts the SIEM ingestion route.
+        var.siem_enabled ? { SIEM_INGEST_TOKEN = aws_ssm_parameter.siem_ingest_token[0].arn } : {}
+      )
     }
     front = {
       port            = 8080

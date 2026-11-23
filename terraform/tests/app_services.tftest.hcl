@@ -209,7 +209,7 @@ run "no_secret_in_plain_environment" {
   assert {
     condition = alltrue([for k, td in aws_ecs_task_definition.app :
       length([for e in try(jsondecode(td.container_definitions)[0].environment, []) :
-        e if contains(["GATEWAY_SHARED_SECRET", "CREDENTIALS_ENCRYPTION_KEY", "SESSION_SIGNING_KEY", "DATABASE_URL", "MS_USUARIOS_SHARED_SECRET", "EVENTS_SERVICE_SHARED_SECRET", "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD"], e.name)
+        e if contains(["GATEWAY_SHARED_SECRET", "CREDENTIALS_ENCRYPTION_KEY", "SESSION_SIGNING_KEY", "DATABASE_URL", "MS_USUARIOS_SHARED_SECRET", "EVENTS_SERVICE_SHARED_SECRET", "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SIEM_INGEST_TOKEN"], e.name)
       ]) == 0
     ])
     error_message = "secret-bearing variables must come from `secrets`, never `environment`"

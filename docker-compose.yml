@@ -114,6 +114,9 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       SECURITY_EVENTS_STREAM_NAME: "security-events"
+      # SIEM (Wazuh/Suricata): apagado por defecto. Activar con SIEM_ENABLED=true
+      # y, en el gateway, SIEM_INGEST_TOKEN (ver terraform/README.md).
+      SIEM_ENABLED: "${SIEM_ENABLED:-false}"
 
   nmap-service:
     build: ../nmap-service
@@ -188,6 +191,8 @@ services:
       # Rangos CIDR permitidos como objetivo del escaneo por IP, separados por
       # comas. Vacio = cualquier objetivo fuera de la denylist del gateway.
       NETWORK_SCAN_ALLOWED_CIDRS: "${NETWORK_SCAN_ALLOWED_CIDRS:-}"
+      # Token bearer de POST /api/integrations/siem/alerts. Vacio = ruta sin montar.
+      SIEM_INGEST_TOKEN: "${SIEM_INGEST_TOKEN:-}"
     ports:
       - "8080:8080"
 

@@ -201,3 +201,103 @@ scripts/create-weak-target.sh --destroy  # terminate the instance and delete its
 
 user-data needs ~1-2 min after creation. Same overrides as above. `make verify` tests it with `scripts/test-create-weak-target.sh`.
 
+
+## Connecting Wazuh and Suricata
+
+The gateway can receive Wazuh alerts (including Suricata signatures) and show them in the admin panel tab "Alertas IDS". This repo only prepares the receiving side. It does not deploy Wazuh, Suricata, OpenSearch or any EC2 instance.
+
+### Enable it
+
+`siem_enabled` (bool, default `false`). When `true`, `apply` creates:
+
+- the SSM SecureString `/security-app/gateway/siem-ingest-token` (48 random alphanumeric characters), injected into the gateway through `secrets` as `SIEM_INGEST_TOKEN`, which mounts the route;
+- `SIEM_ENABLED=true` on events-service, which starts aggregating `siem.alert` events.
+
+When `false`, none of that exists. events-service gets no `SIEM_ENABLED` at all (its default is off). LabRole already reads every SSM parameter the tasks use, so no IAM change is needed. The output `siem_ingest_token_parameter` holds the parameter name (never the value).
+
+```sh
+TF_VAR_siem_enabled=true terraform -chdir=terraform apply   # keep passing your other TF_VAR_* values
+aws ssm get-parameter --name /security-app/gateway/siem-ingest-token --with-decryption --query Parameter.Value --output text
+```
+
+Treat the token as a secret. Redeploy the gateway and events-service after the first `apply` so they pick it up (CI task definitions must keep the same SSM names).
+
+### Wazuh manager: custom integration
+
+Wazuh runs custom integrations through `integratord`. The script must live in `/var/ossec/integrations/`, be named `custom-*`, be executable and be owned by `root:wazuh`. `integratord` calls it with the alert file, the `api_key` and the `hook_url`. Syntax follows the Wazuh documentation (custom integrations); adjust it to your Wazuh version.
+
+In `/var/ossec/etc/ossec.conf` on the manager:
+
+```xml
+<integration>
+  <name>custom-security-app</name>
+  <hook_url>https://GATEWAY_HOST/api/integrations/siem/alerts</hook_url>
+  <api_key>TOKEN_FROM_SSM</api_key>
+  <level>7</level>
+  <alert_format>json</alert_format>
+</integration>
+```
+
+`level` is the minimum Wazuh rule level to forward. The token sits in `ossec.conf` in clear text, so restrict that file. Use the public gateway URL (the `gateway_public_url` output); the gateway listens on HTTPS only.
+
+`/var/ossec/integrations/custom-security-app` (Python 3, standard library only):
+
+```python
+#!/usr/bin/env python3
+import json
+import sys
+import urllib.request
+
+alert_file, token, url = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(alert_file) as f:
+    alert = json.load(f)
+req = urllib.request.Request(
+    url,
+    data=json.dumps(alert).encode(),
+    headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+    method="POST",
+)
+try:
+    urllib.request.urlopen(req, timeout=10)
+except Exception as exc:  # integratord logs stderr; Wazuh does not retry
+    print(f"custom-security-app: {exc}", file=sys.stderr)
+    sys.exit(1)
+```
+
+Then `chmod 750`, `chown root:wazuh` and restart the manager (`systemctl restart wazuh-manager`). Not verified against a live Wazuh here.
+
+### Suricata on the scan target
+
+Run Suricata on the host you scan and let the Wazuh agent on that host read its `eve.json`. In the agent's `ossec.conf`:
+
+```xml
+<localfile>
+  <log_format>json</log_format>
+  <location>/var/log/suricata/eve.json</location>
+</localfile>
+```
+
+The Wazuh ruleset decodes Suricata alerts, and the alert JSON carries `data.alert.signature`, which the gateway maps to the `signature` field. The agent name becomes `agent.name`, which the endpoint requires.
+
+Network scan mode (IP-only scans, see above) is the traffic Suricata sees: the nmap probes against the target show up as IDS alerts next to the scan result. Only hosts that run a Wazuh agent with Suricata report anything.
+
+### Sizing
+
+The Wazuh manager and indexer need an EC2 instance of about 8 GB RAM. They do not fit Fargate or the Learner Lab budget here, and they are not provisioned by this repo.
+
+### Endpoint behavior
+
+`POST /api/integrations/siem/alerts` with `Authorization: Bearer <token>` and the Wazuh alert JSON.
+
+| Status | When |
+| --- | --- |
+| 202 | Accepted and published to the event stream. |
+| 401 | Missing or wrong token. Also when SIEM is disabled: the route is not mounted and behaves like any unknown path, so it cannot be probed. |
+| 413 | Body over 64 KiB. |
+| 422 | A required field is missing, such as `agent.name`. |
+| 429 | More than 120 requests per 60 s. Wazuh does not retry, so a burst over the limit is dropped. |
+| 503 | The token is set but no event stream is configured. |
+
+Severity is derived from the Wazuh rule level with the project's own bands, not Wazuh's: 0-6 low, 7-9 medium, 10-12 high, 13-15 critical.
+
+Local development: `docker-compose.yml` passes `SIEM_ENABLED` (default `false`) to events-service and `SIEM_INGEST_TOKEN` (default empty, route off) to the gateway. For example `SIEM_ENABLED=true SIEM_INGEST_TOKEN=dev-siem-token docker compose up`.

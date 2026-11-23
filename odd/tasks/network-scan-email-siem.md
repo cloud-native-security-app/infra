@@ -127,7 +127,7 @@ Order:
 - A network scan by an account outside `network_scan_emails`, or of a denylisted address, is rejected before anything is published.
 - An `ssh` scan behaves exactly as before.
 - When a scan completes, the user receives one email at the account address with an HTML summary and the JSON attached; the report shows whether it was sent; with SMTP unconfigured nothing is sent and the report says so.
-- With `siem_enabled=false` nothing SIEM-related is deployed and the ingestion route answers 404.
+- With `siem_enabled=false` nothing SIEM-related is deployed and the ingestion route answers 401 (unmounted, like any unknown path; D-23).
 - With it enabled, a Wazuh alert sample POSTed with the token appears in the admin panel "Alertas IDS" tab within seconds; a wrong token gets 401.
 
 ## Out of scope
