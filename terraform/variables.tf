@@ -121,3 +121,9 @@ variable "network_scan_allowed_cidrs" {
     error_message = "Every network_scan_allowed_cidrs entry must be a valid CIDR block such as 172.31.0.0/16."
   }
 }
+
+variable "siem_enabled" {
+  description = "Prepare the stack for a Wazuh/Suricata SIEM: create the SSM SecureString /security-app/gateway/siem-ingest-token, give the gateway SIEM_INGEST_TOKEN (mounts POST /api/integrations/siem/alerts) and set SIEM_ENABLED=true on events-service. Default false: nothing SIEM-related is deployed. Wazuh itself is not provisioned here."
+  type        = bool
+  default     = false
+}
