@@ -77,7 +77,7 @@ Master plan for the work after the admin panel improvements. Each task lives in 
 | EM-02 | user-service | `Mailer` port with an SMTP adapter (`lettre`, STARTTLS 587) and an in-memory fake; when `update_scan_outcome` stores `completed`, send the report to the account email in the background, once per scan (`report_emailed_at` migration), bounded retry, never failing the update; SMTP unset disables sending; `report.emailed` and `report.email_failed` audit events; tests with the fake and a testcontainers SMTP sink (Mailpit) | EM-01 | [x] 2026-11-21, user-service `7894db8` |
 | EM-03 | gateway | Expose the email status of a scan (`sent`, `failed`, `disabled`, `pending`) in the history payload (`email_status`, `emailed_at`); OpenAPI; tests. Changed 2026-11-23 (user): history only, the report payload stays the stored result because the browser export mirrors it | EM-02 | [x] 2026-11-23, gateway `61fbf34` |
 | EM-04 | front | Report shows "Informe enviado a <email>" or why it was not sent; guards and mock; vitest and Playwright | EM-03 | [ ] |
-| EM-05 | infra | SSM SecureStrings for the SMTP host, port, user and password (values set outside Terraform, like OAuth); user-service env; Mailpit in compose; README; tests | EM-02 | [ ] |
+| EM-05 | infra | SSM SecureStrings for the SMTP host, port, user and password (values set outside Terraform, like OAuth); user-service env; Mailpit in compose; README; tests | EM-02 | [x] 2026-11-23, infra `f06d12a` |
 
 ### Part 3: ready for Wazuh and Suricata
 
