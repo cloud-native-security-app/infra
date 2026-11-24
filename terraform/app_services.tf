@@ -87,14 +87,15 @@ resource "aws_ssm_parameter" "google_oauth" {
 
 # SMTP settings of user-service (report email). Terraform only seeds a blank placeholder: a
 # single space, because SSM rejects an empty value and user-service treats a blank SMTP_HOST
-# as "email disabled". scripts/set-smtp.sh writes the real values (Gmail App Password), so the
-# password never enters Terraform or its state.
+# as "email disabled". The port placeholder is 587 (not blank): it is what user-service defaults
+# to anyway, so a real host never meets a blank port. scripts/set-smtp.sh writes the real values
+# (Gmail App Password), so the password never enters Terraform or its state.
 resource "aws_ssm_parameter" "smtp" {
   for_each = toset(["host", "port", "username", "password"])
 
   name  = "/${var.project}/user-service/smtp-${each.key}"
   type  = "SecureString"
-  value = " "
+  value = each.key == "port" ? "587" : " "
 
   lifecycle {
     ignore_changes = [value]

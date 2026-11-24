@@ -624,8 +624,8 @@ run "smtp_settings_live_only_in_ssm" {
     error_message = "the four SMTP settings are SSM SecureStrings under /security-app/user-service/"
   }
   assert {
-    condition     = alltrue([for p in aws_ssm_parameter.smtp : p.value == " "])
-    error_message = "Terraform only seeds a blank placeholder (email disabled); scripts/set-smtp.sh writes the real values"
+    condition     = alltrue([for k, p in aws_ssm_parameter.smtp : p.value == (k == "port" ? "587" : " ")])
+    error_message = "Terraform only seeds placeholders: a blank host, username and password (email disabled) and port 587; scripts/set-smtp.sh writes the real values"
   }
   assert {
     condition     = length([for e in jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].environment : e if startswith(e.name, "SMTP_")]) == 0
@@ -633,6 +633,6 @@ run "smtp_settings_live_only_in_ssm" {
   }
   assert {
     condition     = jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].secrets != null && aws_ecs_task_definition.app["user-service"].execution_role_arn == data.aws_iam_role.lab.arn
-    error_message = "LabRole is the execution role, so it reads the SMTP parameters (no IAM policy to manage in the lab)"
+    error_message = "user-service gets secrets and its execution role is the LabRole data source (the role's SSM access is not checked here)"
   }
 }
