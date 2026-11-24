@@ -264,7 +264,7 @@ except Exception as exc:  # integratord logs stderr; Wazuh does not retry
     sys.exit(1)
 ```
 
-Then `chmod 750`, `chown root:wazuh` and restart the manager (`systemctl restart wazuh-manager`). Not verified against a live Wazuh here.
+Then `chmod 750`, `chown root:wazuh` and restart the manager (`systemctl restart wazuh-manager`). The location, `custom-` prefix, permissions, argument order and the extensionless script with an interpreter line match the Wazuh documentation (integration with external APIs, checked 2026-11-24); not run against a live Wazuh here.
 
 ### Suricata on the scan target
 
@@ -277,7 +277,7 @@ Run Suricata on the host you scan and let the Wazuh agent on that host read its 
 </localfile>
 ```
 
-The Wazuh ruleset decodes Suricata alerts, and the alert JSON carries `data.alert.signature`, which the gateway maps to the `signature` field. The agent name becomes `agent.name`, which the endpoint requires.
+The Wazuh ruleset decodes Suricata alerts, and the alert JSON carries `data.alert.signature`, which the gateway maps to the `signature` field. The `<localfile>` block matches the Wazuh Suricata guide; the `data.*` field names come from Suricata's `eve.json` and are not spelled out in the Wazuh documentation, so check them in a real alert (RF-11). The agent name becomes `agent.name`, which the endpoint requires.
 
 Network scan mode (IP-only scans, see above) is the traffic Suricata sees: the nmap probes against the target show up as IDS alerts next to the scan result. Only hosts that run a Wazuh agent with Suricata report anything.
 
@@ -298,6 +298,6 @@ The Wazuh manager and indexer need an EC2 instance of about 8 GB RAM. They do no
 | 429 | More than 120 requests per 60 s. Wazuh does not retry, so a burst over the limit is dropped. |
 | 503 | The token is set but no event stream is configured. |
 
-Severity is derived from the Wazuh rule level with the project's own bands, not Wazuh's: 0-6 low, 7-9 medium, 10-12 high, 13-15 critical.
+Severity is derived from the Wazuh rule level (0..16) with the project's own bands: 0-6 low, 7-9 medium, 10-12 high, 13-16 critical. Wazuh titles each level but does not group them into severities; level 16 is reserved for custom rules.
 
 Local development: `docker-compose.yml` passes `SIEM_ENABLED` (default `false`) to events-service and `SIEM_INGEST_TOKEN` (default empty, route off) to the gateway. For example `SIEM_ENABLED=true SIEM_INGEST_TOKEN=dev-siem-token docker compose up`.
