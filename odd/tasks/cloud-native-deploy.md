@@ -124,8 +124,9 @@ Phase 1 spikes:
 - [x] 2026-10-19: TF-17 done: legacy `deploy/aws/*` scripts retired (Terraform + `scripts/` replace them); only the untracked `.state/` remains locally.
 - [x] 2026-10-17: spike 1 recorded (Amazon MQ denied; SQS/SNS allowed). User decision: SQS + SNS replaces RabbitMQ. Messaging plans written (`broker` MSG-*, `gateway` and `nmap-service` `sqs-sns-adapter`); TF-10 replaced.
 - [x] Phase 1 (2026-10-17): all spikes recorded; messaging topology signed off.
-- [ ] Phases 2-3.
+- [x] Phase 2 (Terraform): every TF-* task in `odd/tasks/terraform-infra.md` is checked off; the stack was applied and verified in the lab (`scripts/verify-stack.sh` 11 passed, 0 failed on 2026-11-12).
+- [x] Phase 3 (CI/CD and messaging): CI runs on every PR in the service repos; `deploy.yml` rolled out to ECS successfully (gateway 2026-10-21 and 2026-10-22, user-service 2026-10-21, front 2026-10-22); SNS + SQS replaced RabbitMQ. Caveats, reconciled 2026-11-24: the latest gateway (2026-11-10) and nmap-service (2026-11-11) runs failed because the Learner Lab session token in the repo secrets had expired ("The security token included in the request is invalid"), not because of the pipeline; refresh the `AWS_*` secrets at the start of each lab session. events-service (added later) has a `deploy.yml` that has never run; it was deployed by hand in the 2026-11-12 lab check.
 
 ## Next step
 
-MSG-01 is done (topology signed off 2026-10-17 in `broker` : `odd/tasks/sqs-sns-migration.md`). Phase 1 is complete: spikes 1 (no; SQS/SNS chosen), 5, 6 and 7 passed (2026-10-17). Next: Phase 2, starting with TF-01 (fix compose paths) and TF-02/TF-03 (Terraform skeleton and S3 backend); broker MSG-03 (LocalStack) can run in parallel.
+Phases 0-3 are complete. Remaining lab work is tracked in `odd/tasks/review-follow-ups.md` (RF-11): refresh the `AWS_*` secrets, run `deploy.yml` once for events-service and redeploy front, then the SMTP and SIEM checks.
