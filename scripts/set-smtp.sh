@@ -12,6 +12,8 @@
 #   env: PROJECT (default security-app), AWS_PROFILE (default learnerlab),
 #        AWS_REGION (default us-east-1), CLUSTER (default ${PROJECT}-cluster-v2)
 #
+# Needs only bash, coreutils, grep and the aws CLI.
+#
 # Lab provider: smtp.gmail.com, port 587 (STARTTLS), a dedicated Gmail account with 2-Step
 # Verification and an App Password. Values reach aws through 0600 temp files (file://) and are
 # never printed.
@@ -19,7 +21,8 @@
 # A failed write rolls back: the previous values are read first (a missing parameter counts as
 # the placeholder), and on a failed put every parameter touched so far is restored, user-service
 # is not redeployed and the script exits non-zero. If a restore fails too, the parameters that
-# may be inconsistent are named (never their values).
+# may be inconsistent are named (never their values). A failed aws call shows the first line of
+# its error (the cause, e.g. AccessDenied) with every known value redacted.
 set -euo pipefail
 
 PROJECT="${PROJECT:-security-app}"
@@ -89,14 +92,31 @@ OLD=()
 
 placeholder_for() { if [ "$1" = port ]; then printf '%s' "$PORT_PLACEHOLDER"; else printf '%s' "$BLANK"; fi; }
 
+# Prints the first line of an aws error file, with every known value replaced by <redacted>
+# (literal replacement, not a regex). Blank values and the port are not secrets, so they are kept.
+cause() {
+  local line v i
+  IFS= read -r line <"$1" || true
+  for i in "${!NEW[@]}"; do
+    [ "$i" -eq 1 ] && continue
+    v="${NEW[$i]}"
+    [ -n "${v//[[:space:]]/}" ] && line="${line//"$v"/<redacted>}"
+  done
+  for v in ${OLD[@]+"${OLD[@]}"}; do
+    [ -n "${v//[[:space:]]/}" ] && line="${line//"$v"/<redacted>}"
+  done
+  printf '%s' "${line:0:300}"
+}
+
 # Prints the current value; a missing parameter prints its placeholder. Any other failure is fatal
-# so nothing is written without a way back. Error output is discarded: it must not carry values.
+# so nothing is written without a way back. The error goes to a file, never straight to the
+# terminal: only its redacted first line is shown by the caller (see cause).
 read_current() {
   local name="$1" key="$2" out
   if out="$(awsr ssm get-parameter --name "$name" --with-decryption \
     --query Parameter.Value --output text 2>"$TMP/get.err")"; then
     printf '%s' "$out"
-  elif rg -q ParameterNotFound "$TMP/get.err"; then
+  elif grep -q ParameterNotFound "$TMP/get.err"; then
     placeholder_for "$key"
   else
     return 1
@@ -107,36 +127,44 @@ put() {
   local name="$1" value="$2" file="$TMP/value" rc=0
   printf '%s' "$value" >"$file"
   awsr ssm put-parameter --name "$name" --type SecureString --overwrite \
-    --value "file://$file" >/dev/null 2>&1 || rc=$?
+    --value "file://$file" >/dev/null 2>"$TMP/put.err" || rc=$?
   rm -f "$file"
   return "$rc"
 }
 
 for i in "${!NAMES[@]}"; do
-  OLD[i]="$(read_current "$PARAM_PREFIX/smtp-${NAMES[$i]}" "${NAMES[$i]}")" ||
-    die "could not read the current value of smtp-${NAMES[$i]}; nothing was changed"
+  # The command substitution runs in a subshell, so the error file is read here, not inside it.
+  OLD[i]="$(read_current "$PARAM_PREFIX/smtp-${NAMES[$i]}" "${NAMES[$i]}")" || {
+    die "could not read the current value of smtp-${NAMES[$i]}; nothing was changed ($(cause "$TMP/get.err"))"
+  }
 done
 
 # Restores parameters 0..$1 (the failing one included: a failed put may still have applied).
+# Returns 1 and sets UNRESTORED when some could not be restored.
+UNRESTORED=""
 rollback() {
   local last="$1" i bad=()
   for ((i = 0; i <= last; i++)); do
-    put "$PARAM_PREFIX/smtp-${NAMES[$i]}" "${OLD[$i]}" || bad+=("smtp-${NAMES[$i]}")
+    put "$PARAM_PREFIX/smtp-${NAMES[$i]}" "${OLD[$i]}" ||
+      { bad+=("smtp-${NAMES[$i]}"); log "restore of smtp-${NAMES[$i]} failed: $(cause "$TMP/put.err")"; }
   done
   if [ "${#bad[@]}" -gt 0 ]; then
-    log "ERROR: could not restore: ${bad[*]}; they may hold inconsistent values, fix them with set-smtp.sh"
-  else
-    log "restored the previous values of the parameters touched so far"
+    UNRESTORED="${bad[*]}"
+    log "ERROR: could not restore: $UNRESTORED; they may hold inconsistent values, fix them with set-smtp.sh"
+    return 1
   fi
+  log "restored the previous values of the parameters touched so far"
 }
 
 for i in "${!NAMES[@]}"; do
   if put "$PARAM_PREFIX/smtp-${NAMES[$i]}" "${NEW[$i]}"; then
     log "updated $PARAM_PREFIX/smtp-${NAMES[$i]}"
   else
-    log "ERROR: writing smtp-${NAMES[$i]} failed"
-    rollback "$i"
-    die "SMTP settings not changed; user-service was not redeployed"
+    log "ERROR: writing smtp-${NAMES[$i]} failed: $(cause "$TMP/put.err")"
+    if rollback "$i"; then
+      die "SMTP settings not changed; user-service was not redeployed"
+    fi
+    die "SMTP settings may be inconsistent (check: $UNRESTORED); user-service was not redeployed"
   fi
 done
 

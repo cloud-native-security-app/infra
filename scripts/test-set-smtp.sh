@@ -16,7 +16,8 @@ cat >"$WORK/bin/aws" <<'FAKE'
 # State: one file per parameter in $FAKE_AWS_STATE (name with / replaced by _). A put records the
 # command in $FAKE_AWS_LOG and the value in $FAKE_AWS_PUTS as "<name>|<value>"; FAKE_PUT_FAIL=<n>
 # makes the nth put (1-based) fail without storing anything (FAKE_PUT_FAIL_ALSO: a second one); FAKE_GET_FAIL=1 fails every get with
-# an error other than ParameterNotFound.
+# an error other than ParameterNotFound. FAKE_ERR_SECRET=<s> appends <s> to those error messages
+# (a hostile aws that echoes a value back); the failure line is AccessDenied-style.
 echo "$*" >>"$FAKE_AWS_LOG"
 name=""; file=""
 while [ "$#" -gt 0 ]; do
@@ -31,14 +32,17 @@ key="$FAKE_AWS_STATE/${name//\//_}"
 case "$args" in
   *"sts get-caller-identity"*) [ "${FAKE_STS_FAIL:-0}" = "1" ] && exit 254; echo "123456789012" ;;
   *"ssm get-parameter"*)
-    [ "${FAKE_GET_FAIL:-0}" = "1" ] && { echo "AccessDeniedException" >&2; exit 254; }
+    [ "${FAKE_GET_FAIL:-0}" = "1" ] && { echo "An error occurred (AccessDenied) when calling the GetParameter operation ${FAKE_ERR_SECRET:-}" >&2; echo "second line: should not be shown" >&2; exit 254; }
     [ -e "$key" ] || { echo "An error occurred (ParameterNotFound)" >&2; exit 254; }
     cat "$key"; echo ;;
   *"ssm put-parameter"*)
     n=$(( $(wc -l <"$FAKE_AWS_PUTS") + 1 ))
     { printf '%s|' "$name"; cat "$file"; echo; } >>"$FAKE_AWS_PUTS"
-    [ "${FAKE_PUT_FAIL:-0}" = "$n" ] && exit 254
-    [ "${FAKE_PUT_FAIL_ALSO:-0}" = "$n" ] && exit 254
+    if [ "${FAKE_PUT_FAIL:-0}" = "$n" ] || [ "${FAKE_PUT_FAIL_ALSO:-0}" = "$n" ]; then
+      echo "An error occurred (AccessDenied) when calling the PutParameter operation ${FAKE_ERR_SECRET:-}" >&2
+      echo "second line: should not be shown" >&2
+      exit 254
+    fi
     cp "$file" "$key" ;;
 esac
 exit 0
@@ -75,13 +79,6 @@ run() {
   set -e
 }
 
-no_leak() {
-  local name="$1"
-  rg -q -F "$FAKE_PASSWORD" "$WORK/$name.aws" && err "$name: the password leaked into aws argv"
-  rg -q -F "$FAKE_PASSWORD" "$WORK/$name.out" "$WORK/$name.err" && err "$name: the password was printed"
-  return 0
-}
-
 : >"$WORK/empty"
 
 OLD_PASSWORD="old-app-password-wxyz"
@@ -103,6 +100,7 @@ rc_is() { [ "$(cat "$WORK/$1.rc")" = "$2" ] || err "$1: exit $(cat "$WORK/$1.rc"
 no_update() { rg -q 'ecs update-service' "$WORK/$1.aws" && err "$1: user-service must not be redeployed"; return 0; }
 
 # --- values from the environment
+SEED=""
 run env "$WORK/empty" SMTP_HOST=smtp.gmail.com SMTP_USERNAME=reports@example.test SMTP_PASSWORD="$FAKE_PASSWORD" --
 rc_is env 0
 [ "$(puts_of env)" = "host,port,username,password" ] || err "env: wrote '$(puts_of env)'"
@@ -117,6 +115,7 @@ rg -q -- "--profile learnerlab" "$WORK/env.aws" || err "env: must use the learne
 no_secrets env
 
 # --- password from stdin (the prompt path), never from argv
+SEED=""
 printf '%s\n' "$FAKE_PASSWORD" >"$WORK/pw"
 run stdin "$WORK/pw" SMTP_HOST=smtp.gmail.com SMTP_USERNAME=reports@example.test --
 rc_is stdin 0
@@ -136,12 +135,14 @@ no_secrets missing
 SEED=""
 
 # --- invalid port: no write
+SEED=""
 run badport "$WORK/empty" SMTP_HOST=h SMTP_PORT=abc SMTP_USERNAME=u SMTP_PASSWORD="$FAKE_PASSWORD" --
 rc_is badport 1
 [ -z "$(puts_of badport)" ] || err "badport: must not write"
 no_update badport
 
 # --- expired credentials: no write
+SEED=""
 run expired "$WORK/empty" FAKE_STS_FAIL=1 SMTP_HOST=h SMTP_USERNAME=u SMTP_PASSWORD="$FAKE_PASSWORD" --
 rc_is expired 1
 [ -z "$(puts_of expired)" ] || err "expired: must not write"
@@ -179,6 +180,8 @@ expect rollback username "$OLD_USER"
 expect rollback password "$OLD_PASSWORD"
 no_update rollback
 grep -q 'smtp-username' "$WORK/rollback.err" || err "rollback: the message must name the failed parameter"
+grep -q 'SMTP settings not changed; user-service was not redeployed' "$WORK/rollback.err" || err "rollback: a full restore must say settings are not changed: $(cat "$WORK/rollback.err")"
+grep -q 'AccessDenied' "$WORK/rollback.err" || err "rollback: the cause must be shown: $(cat "$WORK/rollback.err")"
 no_secrets rollback
 
 # --- rollback with a parameter that did not exist: restored to its placeholder
@@ -200,17 +203,51 @@ expect firstfail host "$OLD_HOST"
 no_update firstfail
 
 # --- the restore fails too: exit 1 and the inconsistent parameters are named
+SEED="host=$OLD_HOST port=2525 username=$OLD_USER password=$OLD_PASSWORD"
 run restorefail "$WORK/empty" FAKE_PUT_FAIL=3 FAKE_PUT_FAIL_ALSO=4 SMTP_HOST=smtp.gmail.com SMTP_USERNAME=reports@example.test SMTP_PASSWORD="$FAKE_PASSWORD" --
 rc_is restorefail 1
 grep -q 'could not restore: smtp-host' "$WORK/restorefail.err" || err "restorefail: must name smtp-host as inconsistent: $(cat "$WORK/restorefail.err")"
 no_update restorefail
 no_secrets restorefail
+grep -q 'may be inconsistent' "$WORK/restorefail.err" || err "restorefail: must say the settings may be inconsistent"
+grep -q 'user-service was not redeployed' "$WORK/restorefail.err" || err "restorefail: must say user-service was not redeployed"
+grep -q 'not changed' "$WORK/restorefail.err" && err "restorefail: must not claim the settings are unchanged"
 
 # --- the previous values cannot be read (not a missing parameter): nothing is written
+SEED=""
 run readfail "$WORK/empty" FAKE_GET_FAIL=1 SMTP_HOST=h SMTP_USERNAME=u SMTP_PASSWORD="$FAKE_PASSWORD" --
 rc_is readfail 1
 [ -z "$(puts_of readfail)" ] || err "readfail: must not write"
 no_update readfail
+grep -q 'AccessDenied' "$WORK/readfail.err" || err "readfail: the cause must be shown: $(cat "$WORK/readfail.err")"
+grep -q 'should not be shown' "$WORK/readfail.err" && err "readfail: only the first error line may be shown"
+
+# --- a hostile aws echoes the secret in its error: the cause is shown, the secret is redacted
+SEED="host=$OLD_HOST port=2525 username=$OLD_USER password=$OLD_PASSWORD"
+run echoput "$WORK/empty" FAKE_PUT_FAIL=4 FAKE_ERR_SECRET="value=$FAKE_PASSWORD old=$OLD_PASSWORD" SMTP_HOST=smtp.gmail.com SMTP_USERNAME=reports@example.test SMTP_PASSWORD="$FAKE_PASSWORD" --
+rc_is echoput 1
+grep -q 'AccessDenied' "$WORK/echoput.err" || err "echoput: the cause must be shown: $(cat "$WORK/echoput.err")"
+grep -q 'should not be shown' "$WORK/echoput.err" && err "echoput: only the first error line may be shown"
+no_secrets echoput
+run echoget "$WORK/empty" FAKE_GET_FAIL=1 FAKE_ERR_SECRET="value=$FAKE_PASSWORD" SMTP_HOST=h SMTP_USERNAME=u SMTP_PASSWORD="$FAKE_PASSWORD" --
+rc_is echoget 1
+grep -q 'AccessDenied' "$WORK/echoget.err" || err "echoget: the cause must be shown"
+no_secrets echoget
+
+# --- no ripgrep (or fd, sd, bat) on PATH: only bash, coreutils, grep and aws. A missing parameter
+# must still count as its placeholder, so a failed write restores host and port to them.
+mkdir -p "$WORK/min"
+for t in bash env mktemp rm cat tail wc cp grep dirname; do ln -sf "$(command -v "$t")" "$WORK/min/$t"; done
+for t in rg fd sd bat; do
+  PATH="$WORK/min" command -v "$t" >/dev/null 2>&1 && err "norg: $t must not be on the restricted PATH"
+done
+SEED=""
+run norg "$WORK/empty" PATH="$WORK/bin:$WORK/min" FAKE_PUT_FAIL=3 SMTP_HOST=smtp.gmail.com SMTP_USERNAME=reports@example.test SMTP_PASSWORD="$FAKE_PASSWORD" --
+rc_is norg 1
+expect norg host " "
+expect norg port 587
+grep -q 'could not read' "$WORK/norg.err" && err "norg: a missing parameter was treated as a read failure"
+no_update norg
 SEED=""
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
