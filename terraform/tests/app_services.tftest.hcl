@@ -633,6 +633,6 @@ run "smtp_settings_live_only_in_ssm" {
   }
   assert {
     condition     = jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].secrets != null && aws_ecs_task_definition.app["user-service"].execution_role_arn == data.aws_iam_role.lab.arn
-    error_message = "LabRole is the execution role, so it reads the SMTP parameters (no IAM policy to manage in the lab)"
+    error_message = "user-service gets secrets and its execution role is the LabRole data source (the role's SSM access is not checked here)"
   }
 }
