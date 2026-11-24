@@ -141,6 +141,10 @@ run "siem_disabled_by_default_provisions_nothing" {
     )
     error_message = "events-service gets no SIEM_ENABLED when disabled (its default is false)"
   }
+  assert {
+    condition     = output.siem_ingest_token_parameter == null
+    error_message = "siem_ingest_token_parameter is null when SIEM is disabled"
+  }
 }
 
 run "siem_enabled_stores_the_token_in_ssm_and_wires_the_services" {
@@ -178,5 +182,9 @@ run "siem_enabled_stores_the_token_in_ssm_and_wires_the_services" {
       { for e in jsondecode(aws_ecs_task_definition.app["events-service"].container_definitions)[0].environment : e.name => e.value }["SIEM_ENABLED"] == "true"
     )
     error_message = "events-service runs with SIEM_ENABLED=true"
+  }
+  assert {
+    condition     = output.siem_ingest_token_parameter == aws_ssm_parameter.siem_ingest_token[0].name
+    error_message = "siem_ingest_token_parameter names the SSM parameter the README tells operators to read"
   }
 }
