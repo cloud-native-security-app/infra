@@ -22,7 +22,8 @@
 # the placeholder), and on a failed put every parameter touched so far is restored, user-service
 # is not redeployed and the script exits non-zero. If a restore fails too, the parameters that
 # may be inconsistent are named (never their values). A failed aws call shows the first line of
-# its error (the cause, e.g. AccessDenied) with every known value redacted.
+# its error (the cause, e.g. AccessDenied) with every known value redacted. SIGINT, SIGTERM or
+# SIGHUP during the writes rolls back the same way and exits 130, 143 or 129.
 set -euo pipefail
 
 PROJECT="${PROJECT:-security-app}"
@@ -93,10 +94,12 @@ OLD=()
 placeholder_for() { if [ "$1" = port ]; then printf '%s' "$PORT_PLACEHOLDER"; else printf '%s' "$BLANK"; fi; }
 
 # Prints the first line of an aws error file, with every known value replaced by <redacted>
-# (literal replacement, not a regex). Blank values and the port are not secrets, so they are kept.
+# (literal match, not a regex). Blank values and the port are not secrets, so they are kept.
+# Every character inside any occurrence of any value is masked first, and each masked run becomes
+# one <redacted>, so values that contain or partly overlap each other leave nothing visible.
 cause() {
-  local line v i j tmp
-  local -a vals=()
+  local line v i p n len out="" in_mask=0
+  local -a vals=() mask=()
   IFS= read -r line <"$1" || true
   # Every new and old value except the port (looked up by name, not position), blanks skipped.
   for i in "${!NAMES[@]}"; do
@@ -105,21 +108,25 @@ cause() {
       [ -n "${v//[[:space:]]/}" ] && vals+=("$v")
     done
   done
-  # Longest first, so a value contained in another (a username inside the password) cannot
-  # break up the longer one and leave part of it visible.
-  for ((i = 0; i < ${#vals[@]}; i++)); do
-    for ((j = i + 1; j < ${#vals[@]}; j++)); do
-      if [ "${#vals[$j]}" -gt "${#vals[$i]}" ]; then
-        tmp="${vals[$i]}"
-        vals[i]="${vals[$j]}"
-        vals[j]="$tmp"
+  len=${#line}
+  for v in ${vals[@]+"${vals[@]}"}; do
+    n=${#v}
+    for ((p = 0; p + n <= len; p++)); do
+      if [ "${line:p:n}" = "$v" ]; then
+        for ((i = p; i < p + n; i++)); do mask[i]=1; done
       fi
     done
   done
-  for v in ${vals[@]+"${vals[@]}"}; do
-    line="${line//"$v"/<redacted>}"
+  for ((p = 0; p < len; p++)); do
+    if [ -n "${mask[p]-}" ]; then
+      [ "$in_mask" -eq 1 ] || out+="<redacted>"
+      in_mask=1
+    else
+      out+="${line:p:1}"
+      in_mask=0
+    fi
   done
-  printf '%s' "${line:0:300}"
+  printf '%s' "${out:0:300}"
 }
 
 # Prints the current value; a missing parameter prints its placeholder. Any other failure is fatal
@@ -170,10 +177,37 @@ rollback() {
   log "restored the previous values of the parameters touched so far"
 }
 
+# Rolls back and exits like rollback after a failed put, with the signal's exit code. Bash runs the
+# trap once the aws call in flight returns, so WRITING names the parameter that call may have
+# written. Further signals are ignored so the restore itself is not cut short. The trap can run
+# while that call's `2>` redirection is still in effect, so its messages go to the original
+# stderr, kept on fd 3.
+WRITING=-1
+exec 3>&2
+on_signal() {
+  trap '' INT TERM HUP
+  {
+    log "ERROR: interrupted by SIG$1"
+    if [ "$WRITING" -ge 0 ]; then
+      if rollback "$WRITING"; then
+        log "ERROR: SMTP settings not changed; user-service was not redeployed"
+      else
+        log "ERROR: SMTP settings may be inconsistent (check: $UNRESTORED); user-service was not redeployed"
+      fi
+    fi
+  } 2>&3
+  exit "$2"
+}
+trap 'on_signal INT 130' INT
+trap 'on_signal TERM 143' TERM
+trap 'on_signal HUP 129' HUP
+
 for i in "${!NAMES[@]}"; do
+  WRITING="$i"
   if put "$PARAM_PREFIX/smtp-${NAMES[$i]}" "${NEW[$i]}"; then
     log "updated $PARAM_PREFIX/smtp-${NAMES[$i]}"
   else
+    trap '' INT TERM HUP
     log "ERROR: writing smtp-${NAMES[$i]} failed: $(cause "$TMP/put.err")"
     if rollback "$i"; then
       die "SMTP settings not changed; user-service was not redeployed"
@@ -181,6 +215,10 @@ for i in "${!NAMES[@]}"; do
     die "SMTP settings may be inconsistent (check: $UNRESTORED); user-service was not redeployed"
   fi
 done
+
+# Every value is written: from here an interruption leaves consistent settings, only not redeployed.
+trap - INT TERM HUP
+WRITING=-1
 
 # ECS reads `secrets` only when a task starts, so new tasks pick up the values.
 awsr ecs update-service --cluster "$CLUSTER" --service user-service --force-new-deployment >/dev/null
