@@ -95,15 +95,29 @@ placeholder_for() { if [ "$1" = port ]; then printf '%s' "$PORT_PLACEHOLDER"; el
 # Prints the first line of an aws error file, with every known value replaced by <redacted>
 # (literal replacement, not a regex). Blank values and the port are not secrets, so they are kept.
 cause() {
-  local line v i
+  local line v i j tmp
+  local -a vals=()
   IFS= read -r line <"$1" || true
-  for i in "${!NEW[@]}"; do
-    [ "$i" -eq 1 ] && continue
-    v="${NEW[$i]}"
-    [ -n "${v//[[:space:]]/}" ] && line="${line//"$v"/<redacted>}"
+  # Every new and old value except the port (looked up by name, not position), blanks skipped.
+  for i in "${!NAMES[@]}"; do
+    [ "${NAMES[$i]}" = port ] && continue
+    for v in "${NEW[$i]-}" "${OLD[$i]-}"; do
+      [ -n "${v//[[:space:]]/}" ] && vals+=("$v")
+    done
   done
-  for v in ${OLD[@]+"${OLD[@]}"}; do
-    [ -n "${v//[[:space:]]/}" ] && line="${line//"$v"/<redacted>}"
+  # Longest first, so a value contained in another (a username inside the password) cannot
+  # break up the longer one and leave part of it visible.
+  for ((i = 0; i < ${#vals[@]}; i++)); do
+    for ((j = i + 1; j < ${#vals[@]}; j++)); do
+      if [ "${#vals[$j]}" -gt "${#vals[$i]}" ]; then
+        tmp="${vals[$i]}"
+        vals[i]="${vals[$j]}"
+        vals[j]="$tmp"
+      fi
+    done
+  done
+  for v in ${vals[@]+"${vals[@]}"}; do
+    line="${line//"$v"/<redacted>}"
   done
   printf '%s' "${line:0:300}"
 }

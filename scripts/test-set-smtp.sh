@@ -132,7 +132,6 @@ no_update missing
 expect missing host "$OLD_HOST"
 expect missing password "$OLD_PASSWORD"
 no_secrets missing
-SEED=""
 
 # --- invalid port: no write
 SEED=""
@@ -233,6 +232,14 @@ run echoget "$WORK/empty" FAKE_GET_FAIL=1 FAKE_ERR_SECRET="value=$FAKE_PASSWORD"
 rc_is echoget 1
 grep -q 'AccessDenied' "$WORK/echoget.err" || err "echoget: the cause must be shown"
 no_secrets echoget
+# a value contained in another (username inside the password) must not leave part of the longer
+# one visible: the longest value is redacted first
+SEED=""
+run nested "$WORK/empty" FAKE_PUT_FAIL=4 FAKE_ERR_SECRET="value=reports-S3cretTail" SMTP_HOST=smtp.gmail.com SMTP_USERNAME=reports SMTP_PASSWORD="reports-S3cretTail" --
+rc_is nested 1
+grep -q 'AccessDenied' "$WORK/nested.err" || err "nested: the cause must be shown"
+grep -q 'S3cretTail' "$WORK/nested.err" && err "nested: part of the password leaked: $(cat "$WORK/nested.err")"
+SEED=""
 
 # --- no ripgrep (or fd, sd, bat) on PATH: only bash, coreutils, grep and aws. A missing parameter
 # must still count as its placeholder, so a failed write restores host and port to them.
