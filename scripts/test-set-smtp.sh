@@ -43,7 +43,11 @@ case "$args" in
       echo "second line: should not be shown" >&2
       exit 254
     fi
-    cp "$file" "$key" ;;
+    cp "$file" "$key"
+    # FAKE_PUT_SIGNAL=<n>: after storing the nth put, send SIGTERM to the script (an operator's
+    # kill or a closed terminal between writes).
+    [ "${FAKE_PUT_SIGNAL:-0}" = "$n" ] && kill -TERM "$PPID"
+    ;;
 esac
 exit 0
 FAKE
@@ -239,6 +243,31 @@ run nested "$WORK/empty" FAKE_PUT_FAIL=4 FAKE_ERR_SECRET="value=reports-S3cretTa
 rc_is nested 1
 grep -q 'AccessDenied' "$WORK/nested.err" || err "nested: the cause must be shown"
 grep -q 'S3cretTail' "$WORK/nested.err" && err "nested: part of the password leaked: $(cat "$WORK/nested.err")"
+SEED=""
+
+# values that only partly overlap (the end of the username is the start of the password): every
+# character of either value is redacted, whichever order they are replaced in
+SEED=""
+run overlap "$WORK/empty" FAKE_PUT_FAIL=4 FAKE_ERR_SECRET="value=ab12cd34ef" SMTP_HOST=smtp.gmail.com SMTP_USERNAME=ab12cd SMTP_PASSWORD="cd34ef" --
+rc_is overlap 1
+grep -q 'AccessDenied' "$WORK/overlap.err" || err "overlap: the cause must be shown"
+grep -q -e 'ab12' -e '34ef' "$WORK/overlap.err" && err "overlap: part of a value leaked: $(cat "$WORK/overlap.err")"
+grep -q 'value=<redacted>' "$WORK/overlap.err" || err "overlap: the overlapping values must be redacted: $(cat "$WORK/overlap.err")"
+SEED=""
+
+# --- SIGTERM between writes: the parameters written so far are restored, no redeploy
+SEED="host=$OLD_HOST port=2525 username=$OLD_USER password=$OLD_PASSWORD"
+run signal "$WORK/empty" FAKE_PUT_SIGNAL=2 SMTP_HOST=smtp.gmail.com SMTP_USERNAME=reports@example.test SMTP_PASSWORD="$FAKE_PASSWORD" --
+rc_is signal 143
+expect signal host "$OLD_HOST"
+expect signal port 2525
+expect signal username "$OLD_USER"
+expect signal password "$OLD_PASSWORD"
+[ "$(puts_of signal)" = "host,port,host,port" ] || err "signal: wrote '$(puts_of signal)'"
+no_update signal
+grep -q 'interrupted' "$WORK/signal.err" || err "signal: must say the run was interrupted: $(cat "$WORK/signal.err")"
+grep -q 'SMTP settings not changed; user-service was not redeployed' "$WORK/signal.err" || err "signal: a full restore must say settings are not changed: $(cat "$WORK/signal.err")"
+no_secrets signal
 SEED=""
 
 # --- no ripgrep (or fd, sd, bat) on PATH: only bash, coreutils, grep and aws. A missing parameter
