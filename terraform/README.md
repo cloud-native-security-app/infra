@@ -62,6 +62,16 @@ export TF_VAR_namespace_arn="$(scripts/bootstrap-namespace.sh | tail -1)"
 It creates a throwaway cluster `<project>-ns-bootstrap` so ECS creates the namespace, waits until it is listable, then deletes the throwaway cluster (the namespace is kept). The last stdout line is the namespace ARN. `--dry-run` prints the planned commands. `make verify` tests it with `scripts/test-bootstrap-namespace.sh` against a fake `aws` binary.
 
 
+## Task definition ownership
+
+Terraform owns the task definition revision each app service runs (env, secrets, roles, logging; RF-18). `aws_ecs_service` does not ignore `task_definition`, so every `apply` points each service at the revision Terraform registered, and an env or secret change reaches the service in that same `apply`.
+
+Each service repo's `deploy.yml` builds `<sha>` and `:latest`, copies the **latest revision of the service's family** (not the one the service runs), swaps only the image and registers a new revision. So a CI deploy never drops a change Terraform registered, even when that revision is not running yet.
+
+After a CI deploy, the next `apply` shows the service moving back to Terraform's revision. That revision uses `:latest`, the same image CI just pushed, so the change only restarts the tasks once.
+
+Roll back through Terraform: revert the change and `apply`, which registers a new revision. A manual rollback to an older revision (console or `update-service`) does not stick: the next CI deploy copies the newest revision of the family, and the next `apply` points the service at Terraform's revision again. The deploy logs the revision the service runs and the one it copies, and adds a notice when they differ (expected after an `apply`; otherwise a sign of a manual rollback).
+
 ## Pause and resume
 
 `desired_count` (default 1) drives all six ECS services and replaced the former pause/resume scripts:
@@ -220,7 +230,7 @@ TF_VAR_siem_enabled=true terraform -chdir=terraform apply   # keep passing your 
 aws ssm get-parameter --name /security-app/gateway/siem-ingest-token --with-decryption --query Parameter.Value --output text
 ```
 
-Treat the token as a secret. Redeploy the gateway and events-service after the first `apply` so they pick it up (CI task definitions must keep the same SSM names).
+Treat the token as a secret. The `apply` points the gateway and events-service at their new task definition revisions, so they pick it up with no extra redeploy ([Task definition ownership](#task-definition-ownership)).
 
 ### Wazuh manager: custom integration
 
