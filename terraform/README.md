@@ -70,7 +70,7 @@ Each service repo's `deploy.yml` builds `<sha>` and `:latest`, copies the **late
 
 After a CI deploy, the next `apply` shows the service moving back to Terraform's revision. That revision uses `:latest`, the same image CI just pushed, so the change only restarts the tasks once.
 
-Roll back through Terraform: revert the change and `apply`, which registers a new revision. A manual rollback to an older revision (console or `update-service`) does not stick: the next CI deploy copies the newest revision of the family, and the next `apply` points the service at Terraform's revision again. The deploy logs the revision the service runs and the one it copies, and warns when they differ.
+Roll back through Terraform: revert the change and `apply`, which registers a new revision. A manual rollback to an older revision (console or `update-service`) does not stick: the next CI deploy copies the newest revision of the family, and the next `apply` points the service at Terraform's revision again. The deploy logs the revision the service runs and the one it copies, and adds a notice when they differ (expected after an `apply`; otherwise a sign of a manual rollback).
 
 ## Pause and resume
 
