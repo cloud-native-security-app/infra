@@ -324,8 +324,10 @@ resource "aws_ecs_service" "app" {
     }
   }
 
-  # Each service repo's CI registers new task definition revisions.
-  lifecycle {
-    ignore_changes = [task_definition]
-  }
+  # Terraform owns the revision a service runs (RF-18): an apply points every service at the
+  # revision Terraform registered, so env and secret changes always reach it. Each service
+  # repo's CI copies the latest revision of the family and only swaps the image, so a CI
+  # deploy keeps Terraform's env and secrets. After a CI deploy the next apply moves the
+  # service back to Terraform's revision, whose image is :latest (the same image CI pushed),
+  # which restarts the tasks once.
 }
