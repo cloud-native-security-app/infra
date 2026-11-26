@@ -216,3 +216,43 @@ run "nvd_enrichment_budget_respects_the_sqs_limit" {
 
   expect_failures = [var.nvd_enrichment_budget_secs]
 }
+
+run "report_email_queue_and_dlq" {
+  command = apply
+
+  assert {
+    condition     = aws_sqs_queue.report_emails.name == "user-service-report-emails" && aws_sqs_queue.report_emails_dlq.name == "user-service-report-emails-dlq"
+    error_message = "user-service sends report emails to its own queue and DLQ, outside the SNS-fed scan queues"
+  }
+  assert {
+    condition     = aws_sqs_queue.report_emails.sqs_managed_sse_enabled && aws_sqs_queue.report_emails_dlq.sqs_managed_sse_enabled && aws_sqs_queue.report_emails.fifo_queue != true
+    error_message = "standard queues with SSE-SQS"
+  }
+  assert {
+    condition     = aws_sqs_queue.report_emails.visibility_timeout_seconds == 120 && aws_sqs_queue.report_emails.receive_wait_time_seconds == 20
+    error_message = "120 s visibility (one SMTP attempt per receive, retried about 2 minutes later) and long polling"
+  }
+  assert {
+    condition     = aws_sqs_queue.report_emails_dlq.message_retention_seconds == local.sqs_default_dlq_retention
+    error_message = "the DLQ keeps messages for the default 14 days"
+  }
+  assert {
+    condition     = jsondecode(aws_sqs_queue.report_emails.redrive_policy).maxReceiveCount == 3 && jsondecode(aws_sqs_queue.report_emails.redrive_policy).deadLetterTargetArn == aws_sqs_queue.report_emails_dlq.arn
+    error_message = "the report email queue redrives to its DLQ after 3 receives"
+  }
+  assert {
+    condition = (
+      jsondecode(aws_sqs_queue_redrive_allow_policy.report_emails_dlq.redrive_allow_policy).redrivePermission == "byQueue" &&
+      jsondecode(aws_sqs_queue_redrive_allow_policy.report_emails_dlq.redrive_allow_policy).sourceQueueArns == [aws_sqs_queue.report_emails.arn]
+    )
+    error_message = "the DLQ only accepts redrive from the report email queue"
+  }
+  assert {
+    condition = alltrue([for p in [aws_sqs_queue_policy.report_emails.policy, aws_sqs_queue_policy.report_emails_dlq.policy] :
+      length(jsondecode(p).Statement) == 1 &&
+      jsondecode(p).Statement[0].Sid == "DenyInsecureTransport" && jsondecode(p).Statement[0].Effect == "Deny" &&
+      jsondecode(p).Statement[0].Condition.Bool["aws:SecureTransport"] == "false"
+    ])
+    error_message = "both queues deny non-TLS access and have no SNS statement (the sender is user-service through LabRole)"
+  }
+}

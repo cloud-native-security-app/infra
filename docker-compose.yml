@@ -61,6 +61,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      localstack:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgres://postgres:devpassword@postgres:5432/usuarios
       HTTP_HOST: 0.0.0.0
@@ -81,6 +83,10 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       SECURITY_EVENTS_STREAM_NAME: "security-events"
+      # Cola SQS del correo del informe (RF-20), sin topico SNS: user-service
+      # publica y consume. Sin REPORT_EMAIL_QUEUE_URL el envio es en proceso.
+      REPORT_EMAIL_QUEUE_URL: "http://localstack:4566/000000000000/user-service-report-emails"
+      REPORT_EMAIL_DLQ_URL: "http://localstack:4566/000000000000/user-service-report-emails-dlq"
       # Correo del informe contra Mailpit (sumidero local, sin TLS ni credenciales).
       # Bandeja en http://localhost:8025. En AWS el host real viene de SSM.
       SMTP_HOST: mailpit

@@ -69,3 +69,12 @@ run "queue_urls_cover_every_consumer" {
     error_message = "queue and DLQ URLs must be exported for every consumer"
   }
 }
+
+run "report_email_queue_urls_are_exported" {
+  command = apply
+
+  assert {
+    condition     = output.report_email_queue_url == aws_sqs_queue.report_emails.id && output.report_email_dlq_url == aws_sqs_queue.report_emails_dlq.id
+    error_message = "the report email queue and DLQ URLs must be exported (the scan queue maps stay consumer-only)"
+  }
+}

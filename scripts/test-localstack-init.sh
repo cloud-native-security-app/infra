@@ -75,16 +75,18 @@ for t in scan-requests scan-cancellations scan-outcomes; do
 done
 [ "$(count 'sns create-topic')" = 3 ] || err "expected 3 topics, got $(count 'sns create-topic')"
 
-# 2. six queues: three main + three DLQs
+# 2. eight queues: three main + three DLQs + the report email queue and its DLQ
 for q in ms-nmap-scan-requests ms-nmap-scan-cancellations gateway-scan-outcomes; do
   has "sqs create-queue --queue-name $q" || err "queue $q not created"
   has "sqs create-queue --queue-name $q-dlq" || err "dlq $q-dlq not created"
 done
-[ "$(count 'sqs create-queue')" = 6 ] || err "expected 6 queues, got $(count 'sqs create-queue')"
+has "sqs create-queue --queue-name user-service-report-emails" || err "report email queue not created"
+has "sqs create-queue --queue-name user-service-report-emails-dlq" || err "report email dlq not created"
+[ "$(count 'sqs create-queue')" = 8 ] || err "expected 8 queues, got $(count 'sqs create-queue')"
 
-# 3. redrive on the three main queues only, maxReceiveCount 3, targeting the matching DLQ
-[ "$(count 'maxReceiveCount')" = 3 ] || err "expected 3 redrive policies, got $(count 'maxReceiveCount')"
-for q in ms-nmap-scan-requests ms-nmap-scan-cancellations gateway-scan-outcomes; do
+# 3. redrive on the main queues only (the report email queue included), maxReceiveCount 3, targeting the matching DLQ
+[ "$(count 'maxReceiveCount')" = 4 ] || err "expected 4 redrive policies, got $(count 'maxReceiveCount')"
+for q in ms-nmap-scan-requests ms-nmap-scan-cancellations gateway-scan-outcomes user-service-report-emails; do
   rg -q -F -- "arn:aws:sqs:$REG:$ACCT:$q-dlq" "$LOG" || err "no redrive target for $q-dlq"
 done
 rg -q -- 'maxReceiveCount[^0-9]+3[^0-9]' "$LOG" || err "maxReceiveCount is not 3"
@@ -108,8 +110,10 @@ rg -q -F -- '{"routing_key":[{"prefix":"scan.outcome."}]}' "$LOG" || err "outcom
 # 6. visibility timeouts: requests = max(connect + command, local scan) + NVD budget + 60
 #    (defaults max(10 + 900, 900) + 300 + 60), others 30
 rg -q -- 'VisibilityTimeout[^0-9]+1270[^0-9]' "$LOG" || err "requests visibility timeout is not 1270"
-[ "$(count 'VisibilityTimeout')" = 3 ] || err "expected 3 VisibilityTimeout settings (main queues), got $(count 'VisibilityTimeout')"
+[ "$(count 'VisibilityTimeout')" = 4 ] || err "expected 4 VisibilityTimeout settings (main queues), got $(count 'VisibilityTimeout')"
 [ "$(rg -c -- 'VisibilityTimeout[^0-9]+30[^0-9]' "$LOG" || echo 0)" = 2 ] || err "cancellations/outcomes visibility timeout is not 30"
+
+rg -q -- 'VisibilityTimeout[^0-9]+120[^0-9]' "$LOG" || err "report email visibility timeout is not 120"
 
 # 7. the requests timeout follows the nmap-service timeouts passed to the container
 LOG="$WORK/custom.log"
@@ -188,6 +192,14 @@ if ! { printf '%s\n' "$ES" | rg -q 'localstack:\s*$' && printf '%s\n' "$ES" | rg
 fi
 printf '%s\n' "$GW" | rg -qF 'EVENTS_SERVICE_BASE_URL: "http://events-service:8080"' || err "gateway lacks EVENTS_SERVICE_BASE_URL"
 printf '%s\n' "$GW" | rg -qF 'EVENTS_SERVICE_SHARED_SECRET: dev-events-shared-secret' || err "gateway lacks EVENTS_SERVICE_SHARED_SECRET matching the events-service secret"
+
+# 9g. user-service gets the report email queue and DLQ URLs and waits for LocalStack
+US="$(awk '$0=="  user-service:"{f=1;next} /^  [a-z-]+:/{f=0} f' "$COMPOSE")"
+for pat in 'REPORT_EMAIL_QUEUE_URL: "http://localstack:4566/000000000000/user-service-report-emails"' \
+  'REPORT_EMAIL_DLQ_URL: "http://localstack:4566/000000000000/user-service-report-emails-dlq"'; do
+  printf '%s\n' "$US" | rg -qF -- "$pat" || err "user-service lacks: $pat"
+done
+printf '%s\n' "$US" | rg -q 'localstack:\s*$' || err "user-service does not wait for localstack"
 
 # 10. readiness marker: written at the end, only on success
 [ -f "$WORK/base.marker" ] || err "ready marker not written"

@@ -97,6 +97,10 @@ for spec in \
   create_queue "$queue" "$visibility" "$queue-dlq"
 done
 
+# Report email queue (RF-20): user-service sends and consumes it, so no SNS subscription.
+create_queue "user-service-report-emails-dlq"
+create_queue "user-service-report-emails" 120 "user-service-report-emails-dlq"
+
 subscribe scan-requests ms-nmap-scan-requests
 subscribe scan-cancellations ms-nmap-scan-cancellations
 subscribe scan-outcomes gateway-scan-outcomes '{"routing_key":[{"prefix":"scan.outcome."}]}'

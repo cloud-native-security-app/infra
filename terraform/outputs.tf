@@ -148,6 +148,16 @@ output "sqs_dlq_urls" {
   value       = { for name, queue in aws_sqs_queue.dlq : name => queue.id }
 }
 
+output "report_email_queue_url" {
+  description = "URL of the queue user-service sends report emails to and consumes."
+  value       = aws_sqs_queue.report_emails.id
+}
+
+output "report_email_dlq_url" {
+  description = "URL of the report email DLQ (inspect and redrive failed emails)."
+  value       = aws_sqs_queue.report_emails_dlq.id
+}
+
 output "scan_requests_topic_arn" {
   description = "SNS topic the gateway publishes scan requests to."
   value       = aws_sns_topic.scan["scan-requests"].arn
