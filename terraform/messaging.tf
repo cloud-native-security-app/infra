@@ -164,6 +164,9 @@ resource "aws_sns_topic_subscription" "consumer" {
 # Report email queue: user-service sends to it directly and consumes it itself, so it has no
 # SNS topic and stays outside local.scan_queues (every entry there needs one). SQS drives the
 # retries: one SMTP attempt per receive, about visibility_timeout_seconds apart.
+# user-service reads VisibilityTimeout and the redrive maxReceiveCount from the queue at startup
+# (its claim lease, last-receive threshold and reaper window derive from them), so change them
+# here only. Keep visibility_timeout_seconds above the 60 s SMTP attempt deadline.
 resource "aws_sqs_queue" "report_emails_dlq" {
   name                      = "user-service-report-emails-dlq"
   message_retention_seconds = local.sqs_default_dlq_retention
