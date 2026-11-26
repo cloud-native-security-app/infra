@@ -87,7 +87,7 @@ scripts/set-smtp.sh            # then the Google client:
 GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
 ```
 
-Check it with `terraform -chdir=terraform state pull | jq '.resources[] | select(.type=="aws_ssm_parameter" and (.name=="smtp" or .name=="google_oauth")) | .instances[].attributes | {has_value_wo, value}'`: every entry shows `has_value_wo: true` and `value: null`. The state bucket is versioned, so older state versions keep the old values. Rotate a secret that was ever in the state (a new Gmail App Password; a new Google client secret).
+Check it with `terraform -chdir=terraform state pull | jq '.resources[] | select(.type=="aws_ssm_parameter" and (.name=="smtp" or .name=="google_oauth")) | .instances[].attributes | {has_value_wo, value}'`: every entry shows `has_value_wo: true` and `value: ""` (empty). The replacement also registers new gateway and user-service task definitions (the parameter ARNs are recomputed), so their tasks may start while the parameters still hold the placeholders; once the scripts have set the real values, make sure both services run a deployment started after that (the scripts redeploy; otherwise `aws ecs update-service --force-new-deployment`). The state bucket is versioned, so older state versions keep the old values. Rotate a secret that was ever in the state (a new Gmail App Password; a new Google client secret).
 
 Generated secrets (the Postgres password, the session signing key, the shared secrets, the SIEM token) come from `random_password`, so they are in the state by design. The bucket is private, encrypted and TLS-only.
 
