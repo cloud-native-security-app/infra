@@ -72,16 +72,24 @@ resource "aws_ssm_parameter" "session_signing_key" {
 }
 
 # Google OAuth client of the gateway. Terraform only seeds a placeholder; the real values
-# are written by scripts/set-google-oauth.sh, so the secret never enters Terraform state.
+# are written by scripts/set-google-oauth.sh. The placeholder is write-only (`value_wo`, RF-19):
+# once the provider has written it (has_value_wo), it stores no value in the state, not even
+# after a refresh reads the real secret; parameters created before RF-19 need the one-time
+# migration in terraform/README.md (Secrets and the Terraform state). The provider writes `value_wo` on create and whenever
+# `value_wo_version` changes; that version is ignored after create, so no apply (including the
+# first one on a stack whose parameters predate RF-19) overwrites the real values. Changing any
+# other argument of these parameters makes the provider re-put a blank value, which SSM rejects:
+# recreate them and re-run the script instead.
 resource "aws_ssm_parameter" "google_oauth" {
   for_each = toset(["client-id", "client-secret"])
 
-  name  = "/${var.project}/gateway/google-${each.key}"
-  type  = "SecureString"
-  value = "unset-run-scripts-set-google-oauth"
+  name             = "/${var.project}/gateway/google-${each.key}"
+  type             = "SecureString"
+  value_wo         = "unset-run-scripts-set-google-oauth"
+  value_wo_version = 1
 
   lifecycle {
-    ignore_changes = [value]
+    ignore_changes = [value_wo_version]
   }
 }
 
@@ -89,16 +97,19 @@ resource "aws_ssm_parameter" "google_oauth" {
 # single space, because SSM rejects an empty value and user-service treats a blank SMTP_HOST
 # as "email disabled". The port placeholder is 587 (not blank): it is what user-service defaults
 # to anyway, so a real host never meets a blank port. scripts/set-smtp.sh writes the real values
-# (Gmail App Password), so the password never enters Terraform or its state.
+# (Gmail App Password). Write-only placeholders, as for google_oauth above (RF-19): no value
+# in the state, and `value_wo_version` ignored after create, so applies never overwrite the real
+# settings.
 resource "aws_ssm_parameter" "smtp" {
   for_each = toset(["host", "port", "username", "password"])
 
-  name  = "/${var.project}/user-service/smtp-${each.key}"
-  type  = "SecureString"
-  value = each.key == "port" ? "587" : " "
+  name             = "/${var.project}/user-service/smtp-${each.key}"
+  type             = "SecureString"
+  value_wo         = each.key == "port" ? "587" : " "
+  value_wo_version = 1
 
   lifecycle {
-    ignore_changes = [value]
+    ignore_changes = [value_wo_version]
   }
 }
 

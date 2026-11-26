@@ -481,8 +481,11 @@ run "google_oauth_lives_only_in_ssm" {
     error_message = "both Google OAuth values are SSM SecureStrings under /security-app/gateway/"
   }
   assert {
-    condition     = alltrue([for p in aws_ssm_parameter.google_oauth : p.value == "unset-run-scripts-set-google-oauth"])
-    error_message = "Terraform only seeds a placeholder; the real values are set by scripts/set-google-oauth.sh"
+    # The placeholder is write-only (value_wo), so the state never holds the real secret (RF-19).
+    # A test cannot read value_wo, and the mock fills the computed `value` at random, so this
+    # checks the write-only version; the lab check is `terraform state pull` (README).
+    condition     = alltrue([for p in aws_ssm_parameter.google_oauth : p.value_wo_version == 1])
+    error_message = "Terraform only seeds a write-only placeholder (value_wo, version 1); the real values are set by scripts/set-google-oauth.sh"
   }
   assert {
     condition     = length([for e in jsondecode(aws_ecs_task_definition.app["gateway"].container_definitions)[0].environment : e if startswith(e.name, "GOOGLE_CLIENT_")]) == 0
@@ -624,8 +627,9 @@ run "smtp_settings_live_only_in_ssm" {
     error_message = "the four SMTP settings are SSM SecureStrings under /security-app/user-service/"
   }
   assert {
-    condition     = alltrue([for k, p in aws_ssm_parameter.smtp : p.value == (k == "port" ? "587" : " ")])
-    error_message = "Terraform only seeds placeholders: a blank host, username and password (email disabled) and port 587; scripts/set-smtp.sh writes the real values"
+    # Write-only placeholders, as for google_oauth (RF-19).
+    condition     = alltrue([for p in aws_ssm_parameter.smtp : p.value_wo_version == 1])
+    error_message = "Terraform only seeds write-only placeholders (value_wo, version 1): a blank host, username and password (email disabled) and port 587; scripts/set-smtp.sh writes the real values"
   }
   assert {
     condition     = length([for e in jsondecode(aws_ecs_task_definition.app["user-service"].container_definitions)[0].environment : e if startswith(e.name, "SMTP_")]) == 0

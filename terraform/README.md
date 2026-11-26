@@ -72,6 +72,25 @@ After a CI deploy, the next `apply` shows the service moving back to Terraform's
 
 Roll back through Terraform: revert the change and `apply`, which registers a new revision. A manual rollback to an older revision (console or `update-service`) does not stick: the next CI deploy copies the newest revision of the family, and the next `apply` points the service at Terraform's revision again. The deploy logs the revision the service runs and the one it copies, and adds a notice when they differ (expected after an `apply`; otherwise a sign of a manual rollback).
 
+## Secrets and the Terraform state
+
+The Google OAuth and SMTP parameters hold only write-only placeholders (`value_wo`, RF-19). The aws provider then stores no `value` in the state, not even after a refresh reads the real secret that a script wrote. `value_wo_version` is set to 1 and ignored after create, so no `apply` overwrites the real values. Changing any other argument of these parameters makes the provider re-put a blank value, which SSM rejects. To change them, recreate the parameters and re-run the scripts.
+
+The provider only stops storing the value once it has written `value_wo` itself (`has_value_wo = true` in the state). Parameters created before RF-19 still hold their value in the state until a one-time migration replaces them. Replacing them resets them to the placeholders, so have the real values at hand:
+
+```sh
+terraform -chdir=terraform apply \
+  -replace='aws_ssm_parameter.smtp["host"]' -replace='aws_ssm_parameter.smtp["port"]' \
+  -replace='aws_ssm_parameter.smtp["username"]' -replace='aws_ssm_parameter.smtp["password"]' \
+  -replace='aws_ssm_parameter.google_oauth["client-id"]' -replace='aws_ssm_parameter.google_oauth["client-secret"]'
+scripts/set-smtp.sh            # then the Google client:
+GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
+```
+
+Check it with `terraform -chdir=terraform state pull | jq '.resources[] | select(.type=="aws_ssm_parameter" and (.name=="smtp" or .name=="google_oauth")) | .instances[].attributes | {has_value_wo, value}'`: every entry shows `has_value_wo: true` and `value: ""` (empty). The replacement also registers new gateway and user-service task definitions (the parameter ARNs are recomputed), so their tasks may start while the parameters still hold the placeholders; once the scripts have set the real values, make sure both services run a deployment started after that (the scripts redeploy; otherwise `aws ecs update-service --force-new-deployment`). The state bucket is versioned, so older state versions keep the old values. Rotate a secret that was ever in the state (a new Gmail App Password; a new Google client secret).
+
+Generated secrets (the Postgres password, the session signing key, the shared secrets, the SIEM token) come from `random_password`, so they are in the state by design. The bucket is private, encrypted and TLS-only.
+
 ## Pause and resume
 
 `desired_count` (default 1) drives all six ECS services and replaced the former pause/resume scripts:
@@ -113,7 +132,7 @@ It reads the `learnerlab` profile, checks it with `sts get-caller-identity` (an 
 
 ## Google OAuth client
 
-Terraform creates `/security-app/gateway/google-client-id` and `/security-app/gateway/google-client-secret` as SSM SecureStrings with a placeholder value and ignores later value changes, so the real secret never enters Terraform or its state. After `apply`, store the real client and redeploy the gateway:
+Terraform creates `/security-app/gateway/google-client-id` and `/security-app/gateway/google-client-secret` as SSM SecureStrings with a write-only placeholder (`value_wo`), so the real secret never enters Terraform state ([Secrets and the Terraform state](#secrets-and-the-terraform-state)). After `apply`, store the real client and redeploy the gateway:
 
 ```sh
 GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... scripts/set-google-oauth.sh
@@ -123,7 +142,7 @@ Without those variables it reads the untracked local file `deploy/aws/.state/goo
 
 ## Report email (SMTP)
 
-user-service emails the report to the scan owner when a scan completes. Terraform creates `/security-app/user-service/smtp-host`, `smtp-port`, `smtp-username` and `smtp-password` as SSM SecureStrings holding a placeholder (one space for host, username and password, because SSM rejects an empty value; `587` for the port) and ignores later value changes, so the password never enters Terraform or its state. ECS injects them through `secrets` as `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME` and `SMTP_PASSWORD`; LabRole is the execution role, so it already reads them. A blank `SMTP_HOST` disables the email: scans keep working and the history reports `disabled`. Until you run the steps below, email stays off.
+user-service emails the report to the scan owner when a scan completes. Terraform creates `/security-app/user-service/smtp-host`, `smtp-port`, `smtp-username` and `smtp-password` as SSM SecureStrings holding a placeholder (one space for host, username and password, because SSM rejects an empty value; `587` for the port) as write-only values (`value_wo`), so the password never enters Terraform state ([Secrets and the Terraform state](#secrets-and-the-terraform-state)). ECS injects them through `secrets` as `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME` and `SMTP_PASSWORD`; LabRole is the execution role, so it already reads them. A blank `SMTP_HOST` disables the email: scans keep working and the history reports `disabled`. Until you run the steps below, email stays off.
 
 Lab provider: a dedicated Gmail account (about 500 messages a day, enough for academic use).
 
