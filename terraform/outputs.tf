@@ -192,3 +192,8 @@ output "siem_ingest_token_parameter" {
   description = "SSM parameter holding the SIEM ingestion bearer token (null when siem_enabled is false). The value is never output; read it with aws ssm get-parameter --with-decryption."
   value       = var.siem_enabled ? aws_ssm_parameter.siem_ingest_token[0].name : null
 }
+
+output "ops_alerts_topic_arn" {
+  description = "ARN of the SNS topic that receives the dead-letter queue alarms."
+  value       = aws_sns_topic.ops_alerts.arn
+}

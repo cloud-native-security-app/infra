@@ -160,6 +160,23 @@ Queue and retries: the report email goes through the SQS queue `user-service-rep
 
 Local development: `docker compose up` starts Mailpit (`axllent/mailpit:v1.21`) and points user-service at it (`SMTP_HOST=mailpit`, port 1025, `SMTP_TLS=none`, no credentials). Read the mail at http://localhost:8025 (bound to localhost).
 
+## Dead-letter queue alarms
+
+A CloudWatch alarm per dead-letter queue (the three scan DLQs and `user-service-report-emails-dlq`, named `<queue>-not-empty`) fires when `ApproximateNumberOfMessagesVisible` is above 0 in a 5 minute period, and again on recovery. Both notify the SNS topic `ops-alerts` (output `ops_alerts_topic_arn`). Adding a DLQ to `local.dlq_names` in `monitoring.tf` adds its alarm.
+
+`alarm_emails` (list, default empty) subscribes addresses to the topic. Each recipient must confirm the AWS subscription email, or nothing arrives; with the default the alarms exist but notify nobody.
+
+```sh
+TF_VAR_alarm_emails='["ops@example.com"]' terraform -chdir=terraform apply
+```
+
+When one fires, read the messages, fix the cause, then redrive them to their source queue:
+
+```sh
+aws sqs receive-message --queue-url <dlq url> --max-number-of-messages 10 --visibility-timeout 0
+aws sqs start-message-move-task --source-arn <dlq arn>
+```
+
 ## Admin users
 
 `admin_bootstrap_emails` (list, default empty) reaches user-service as `ADMIN_BOOTSTRAP_EMAILS`, comma separated. The list is authoritative: user-service grants the `admin` role to those emails and revokes it from everyone else at startup and on profile provisioning, so an empty list means no admins and the `/admin` panel is unreachable. Pass it at apply time instead of committing it:
