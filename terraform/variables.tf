@@ -127,3 +127,14 @@ variable "siem_enabled" {
   type        = bool
   default     = false
 }
+
+variable "alarm_emails" {
+  description = "Emails that receive the ops-alerts notifications (dead-letter queue alarms). Each recipient must confirm the AWS subscription email before alerts arrive. Empty = the alarms exist but notify nobody."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for e in var.alarm_emails : can(regex("^[^@\\s,]+@[^@\\s,]+\\.[^@\\s,]+$", e))])
+    error_message = "Every alarm_emails entry must be an email address (no commas or spaces)."
+  }
+}
