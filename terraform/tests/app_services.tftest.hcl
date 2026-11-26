@@ -296,9 +296,12 @@ run "environment_matches_the_legacy_json" {
         SECURITY_EVENTS_STREAM_NAME = "security-events"
         ADMIN_BOOTSTRAP_EMAILS      = ""
         NETWORK_SCAN_EMAILS         = ""
+        AWS_REGION                  = "us-east-1"
+        REPORT_EMAIL_QUEUE_URL      = aws_sqs_queue.report_emails.id
+        REPORT_EMAIL_DLQ_URL        = aws_sqs_queue.report_emails_dlq.id
       }
     )
-    error_message = "user-service keeps its non-secret settings (no admins and no network-scan accounts unless the lists are set)"
+    error_message = "user-service keeps its non-secret settings (no admins and no network-scan accounts unless the lists are set) plus the region and the report email queue and DLQ URLs"
   }
   assert {
     condition = (

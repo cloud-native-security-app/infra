@@ -137,6 +137,10 @@ locals {
         ADMIN_BOOTSTRAP_EMAILS = join(",", var.admin_bootstrap_emails)
         # Authoritative list of accounts that may start IP-only (network mode) scans.
         NETWORK_SCAN_EMAILS = join(",", var.network_scan_emails)
+        # Report email queue (RF-20): LabRole already allows SQS. An older user-service ignores these.
+        AWS_REGION             = var.region
+        REPORT_EMAIL_QUEUE_URL = aws_sqs_queue.report_emails.id
+        REPORT_EMAIL_DLQ_URL   = aws_sqs_queue.report_emails_dlq.id
       }
       secrets = {
         DATABASE_URL               = aws_ssm_parameter.database_url.arn

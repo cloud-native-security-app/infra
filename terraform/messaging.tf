@@ -160,3 +160,50 @@ resource "aws_sns_topic_subscription" "consumer" {
   # SNS can only deliver once the queue policy allows it.
   depends_on = [aws_sqs_queue_policy.consumer]
 }
+
+# Report email queue: user-service sends to it directly and consumes it itself, so it has no
+# SNS topic and stays outside local.scan_queues (every entry there needs one). SQS drives the
+# retries: one SMTP attempt per receive, about visibility_timeout_seconds apart.
+resource "aws_sqs_queue" "report_emails_dlq" {
+  name                      = "user-service-report-emails-dlq"
+  message_retention_seconds = local.sqs_default_dlq_retention
+  sqs_managed_sse_enabled   = true
+}
+
+resource "aws_sqs_queue" "report_emails" {
+  name                       = "user-service-report-emails"
+  visibility_timeout_seconds = 120 # one SMTP attempt (60 s deadline) plus margin
+  message_retention_seconds  = local.sqs_default_retention
+  receive_wait_time_seconds  = 20 # long polling
+  sqs_managed_sse_enabled    = true
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.report_emails_dlq.arn
+    maxReceiveCount     = 3
+  })
+}
+
+resource "aws_sqs_queue_redrive_allow_policy" "report_emails_dlq" {
+  queue_url = aws_sqs_queue.report_emails_dlq.id
+  redrive_allow_policy = jsonencode({
+    redrivePermission = "byQueue"
+    sourceQueueArns   = [aws_sqs_queue.report_emails.arn]
+  })
+}
+
+# No SNS statement: the only sender is user-service, through LabRole (IAM).
+resource "aws_sqs_queue_policy" "report_emails" {
+  queue_url = aws_sqs_queue.report_emails.id
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [merge(local.deny_insecure_transport, { Resource = aws_sqs_queue.report_emails.arn, Action = "sqs:*" })]
+  })
+}
+
+resource "aws_sqs_queue_policy" "report_emails_dlq" {
+  queue_url = aws_sqs_queue.report_emails_dlq.id
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [merge(local.deny_insecure_transport, { Resource = aws_sqs_queue.report_emails_dlq.arn, Action = "sqs:*" })]
+  })
+}
